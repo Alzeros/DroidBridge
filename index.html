@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="pd-token" content="__DROIDBRIDGE_TOKEN__">
+<link rel="icon" type="image/png" sizes="256x256" href="/icon.png">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="shortcut icon" href="/favicon.ico">
+<title>DroidBridge · 进程级网络应用台</title>
+<style>
+  :root{
+    --bg:220 33% 97%; --surface:0 0% 100%; --surface-soft:220 40% 98%;
+    --line:220 24% 90%; --text:222 47% 11%; --muted:215 20% 42%;
+    --primary:221 83% 60%; --primary-hover:221 79% 54%; --primary-soft:221 100% 96%;
+    --teal:174 62% 38%; --teal-soft:174 60% 95%;
+    --violet:262 70% 60%; --violet-soft:262 80% 97%;
+    --green:142 71% 45%; --green-soft:142 76% 96%;
+    --red:358 75% 59%; --red-soft:358 100% 97%;
+    --amber:32 95% 44%; --amber-soft:38 100% 96%;
+    --text-xs:11px; --text-sm:12px; --text-md:13px; --text-base:14px;
+    --text-lg:16px; --text-xl:20px;
+    --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
+    --space-5:20px; --space-6:24px; --space-8:32px;
+    --radius-sm:9px; --radius-md:12px; --radius-lg:16px;
+    --shadow-card:0 1px 2px hsl(222 47% 11% / .03), 0 8px 24px hsl(222 47% 11% / .05);
+    --shadow-modal:0 24px 70px hsl(222 47% 11% / .22);
+    --transition:160ms cubic-bezier(.4,0,.2,1);
+    --scroll-thumb:220 20% 82%; --scroll-thumb-hover:221 40% 68%;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html{scrollbar-color:hsl(var(--scroll-thumb)) transparent;scrollbar-width:thin}
+  body{margin:0;min-width:320px;color:hsl(var(--text));
+    font:var(--text-base)/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+    background:
+      radial-gradient(900px 420px at 8% -6%, hsl(var(--primary) / .07), transparent 60%),
+      radial-gradient(760px 420px at 100% 4%, hsl(var(--teal) / .06), transparent 62%),
+      hsl(var(--bg));
+    background-attachment:fixed}
+  button,input,select,textarea{font-family:inherit}
+  button{cursor:pointer}
+  button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+    outline:3px solid hsl(var(--primary) / .2);outline-offset:2px}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:hsl(var(--scroll-thumb));border-radius:999px;
+    border:3px solid hsl(var(--surface))}
+  ::-webkit-scrollbar-thumb:hover{background:hsl(var(--scroll-thumb-hover))}
+  .log-list::-webkit-scrollbar-thumb,.events-body::-webkit-scrollbar-thumb,.modal::-webkit-scrollbar-thumb{
+    border-color:hsl(var(--surface))}
+
+  .app-header{height:72px;display:flex;align-items:center;gap:var(--space-6);padding:0 28px;
+    background:hsl(var(--surface) / .9);border-bottom:1px solid hsl(var(--line));
+    position:sticky;top:0;z-index:10;backdrop-filter:blur(14px)}
+  .brand{display:flex;align-items:center;gap:var(--space-3);flex:1;min-width:0}
+  .logo{width:38px;height:38px;flex:none;display:block;
+    filter:drop-shadow(0 4px 10px hsl(var(--primary) / .22))}
+  .logo img{width:100%;height:100%;display:block}
+  h1{margin:0;font-size:var(--text-lg);letter-spacing:.1px}
+  .brand p{margin:1px 0 0;color:hsl(var(--muted));font-size:var(--text-sm)}
+  .header-actions{display:flex;align-items:center;gap:var(--space-4);flex:none}
+  .proxy-pill{display:flex;align-items:center;gap:var(--space-2);padding:7px 12px;border-radius:999px;
+    background:hsl(var(--surface-soft));border:1px solid hsl(var(--line));font-size:var(--text-sm);
+    color:hsl(var(--muted));max-width:360px}
+  #proxyText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:hsl(215 16% 70%);flex:none}
+  .dot.on{background:hsl(var(--green));box-shadow:0 0 0 4px hsl(var(--green) / .12);animation:pulse 2.4s infinite}
+  .dot.off{background:hsl(var(--red));box-shadow:0 0 0 4px hsl(var(--red) / .1)}
+  @keyframes pulse{50%{box-shadow:0 0 0 7px hsl(var(--green) / 0)}}
+
+  .toggle{display:flex;align-items:center;gap:var(--space-2);cursor:pointer;white-space:nowrap;
+    font-size:var(--text-sm);color:hsl(var(--muted));position:relative}
+  .toggle input{position:absolute;left:0;top:50%;transform:translateY(-50%);width:36px;height:20px;
+    margin:0;opacity:0;cursor:pointer;z-index:1}
+  .toggle-track{width:36px;height:20px;border-radius:999px;background:hsl(215 20% 84%);
+    position:relative;flex:none;transition:background var(--transition)}
+  .toggle-thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+    background:hsl(0 0% 100%);box-shadow:0 1px 3px hsl(222 47% 11% / .25);
+    transition:transform var(--transition)}
+  .toggle input:checked + .toggle-track{background:hsl(var(--primary))}
+  .toggle input:checked + .toggle-track .toggle-thumb{transform:translateX(16px)}
+  .toggle input:focus-visible + .toggle-track{outline:3px solid hsl(var(--primary) / .25);outline-offset:2px}
+  .toggle input:checked ~ .toggle-label{color:hsl(var(--text))}
+
+  .app-main{max-width:1180px;margin:0 auto;padding:var(--space-6) 28px var(--space-8)}
+  .dashboard{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--space-5);align-items:start}
+  .workspace{min-width:0;display:grid;gap:var(--space-5)}
+  .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-4);
+    min-height:52px}
+  h2{margin:0;font-size:var(--text-xl);letter-spacing:-.2px}
+  .hint{margin:var(--space-1) 0 0;color:hsl(var(--muted));font-size:var(--text-sm)}
+  .btn{border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--text));
+    padding:8px 14px;border-radius:var(--radius-sm);font-size:var(--text-md);font-weight:500;
+    transition:border-color var(--transition),background var(--transition),color var(--transition),transform var(--transition)}
+  .btn:hover{border-color:hsl(215 24% 78%);background:hsl(var(--surface-soft))}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:hsl(var(--primary));border-color:hsl(var(--primary));color:hsl(0 0% 100%)}
+  .btn.primary:hover{background:hsl(var(--primary-hover));border-color:hsl(var(--primary-hover))}
+  .btn.tiny{padding:5px 9px;font-size:var(--text-sm);border-radius:8px}
+  .btn.danger{color:hsl(var(--red))}
+  .btn.danger:hover{background:hsl(var(--red-soft));border-color:hsl(var(--red) / .28)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .btn.full{width:100%;justify-content:center}
+  .btn.icon{padding:5px 8px;line-height:1;display:inline-flex;align-items:center}
+  .btn.icon svg{width:14px;height:14px;display:block}
+
+  .toolbar{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+  .search{position:relative;flex:1;min-width:180px;max-width:340px}
+  .search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;
+    color:hsl(var(--muted));pointer-events:none}
+  .search input{width:100%;padding:8px 30px 8px 31px;border:1px solid hsl(var(--line));
+    border-radius:999px;background:hsl(var(--surface));color:hsl(var(--text));font-size:var(--text-sm);outline:none;
+    transition:border-color var(--transition),box-shadow var(--transition)}
+  .search input:focus{border-color:hsl(var(--primary));box-shadow:0 0 0 3px hsl(var(--primary) / .12)}
+  .search input::placeholder{color:hsl(215 16% 62%)}
+  .search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:20px;height:20px;
+    border:0;border-radius:50%;background:hsl(220 20% 92%);color:hsl(var(--muted));font-size:12px;line-height:1;
+    display:grid;place-items:center;padding:0}
+  .search-clear:hover{background:hsl(220 20% 86%);color:hsl(var(--text))}
+  .chips{display:flex;gap:var(--space-1);flex-wrap:wrap}
+  .chip{border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--muted));
+    padding:5px 11px;border-radius:999px;font-size:var(--text-sm);display:inline-flex;align-items:center;gap:6px;
+    transition:background var(--transition),color var(--transition),border-color var(--transition)}
+  .chip:hover{border-color:hsl(215 24% 78%);color:hsl(var(--text))}
+  .chip.active{background:hsl(var(--primary-soft));border-color:hsl(var(--primary) / .35);color:hsl(var(--primary-hover));font-weight:600}
+  .chip .n{font-size:var(--text-xs);opacity:.75;font-variant-numeric:tabular-nums}
+  .chip.tiny{padding:3px 9px;font-size:var(--text-xs)}
+  .sort-select{padding:7px 10px;border:1px solid hsl(var(--line));border-radius:999px;background:hsl(var(--surface));
+    color:hsl(var(--muted));font-size:var(--text-sm);outline:none;cursor:pointer}
+  .sort-select:focus{border-color:hsl(var(--primary))}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--space-4)}
+  .card{display:flex;flex-direction:column;background:hsl(var(--surface));border:1px solid hsl(var(--line));border-radius:var(--radius-lg);
+    padding:var(--space-4);box-shadow:var(--shadow-card);position:relative;overflow:hidden;
+    transition:transform var(--transition),box-shadow var(--transition),border-color var(--transition)}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent;
+    transition:background var(--transition)}
+  .card:hover{transform:translateY(-2px);border-color:hsl(215 24% 84%);box-shadow:0 10px 28px hsl(222 47% 11% / .08)}
+  .card.running::before{background:hsl(var(--amber))}
+  .card.running{border-color:hsl(var(--amber) / .35)}
+  .card.invalid::before{background:hsl(var(--red))}
+  .card.enter{animation:cardIn .45s cubic-bezier(.2,.7,.3,1) backwards}
+  @keyframes cardIn{from{opacity:0}to{opacity:1}}
+  .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2)}
+  .avatar{position:relative;width:40px;height:40px;border-radius:var(--radius-md);display:grid;place-items:center;
+    color:hsl(0 0% 100%);font-weight:700;font-size:var(--text-lg);overflow:hidden;flex:none}
+  .avatar.has-icon{background:hsl(var(--surface-soft))!important;border:1px solid hsl(var(--line))}
+  .avatar-img{position:absolute;inset:5px;width:calc(100% - 10px);height:calc(100% - 10px);
+    object-fit:contain;opacity:0;transition:opacity var(--transition)}
+  .avatar.has-icon .avatar-img{opacity:1}
+  .avatar.has-icon .avatar-letter{opacity:0}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:var(--text-xs);line-height:1.4;
+    padding:3px 8px;border-radius:999px;background:hsl(220 24% 95%);color:hsl(var(--muted));white-space:nowrap}
+  .badge.electron{background:hsl(var(--primary-soft));color:hsl(var(--primary-hover))}
+  .badge.firefox{background:hsl(28 100% 96%);color:hsl(24 74% 42%)}
+  .badge.good{background:hsl(var(--green-soft));color:hsl(var(--green))}
+  .badge.warn{background:hsl(var(--amber-soft));color:hsl(var(--amber))}
+  .badge.bad{background:hsl(var(--red-soft));color:hsl(var(--red))}
+  .badge.proxy{background:hsl(var(--primary-soft));color:hsl(var(--primary-hover))}
+  .badge.direct{background:hsl(var(--teal-soft));color:hsl(var(--teal))}
+  .run-dot{width:6px;height:6px;border-radius:50%;background:hsl(var(--amber));display:inline-block;
+    animation:pulse-amber 2s infinite}
+  @keyframes pulse-amber{50%{box-shadow:0 0 0 4px hsl(var(--amber) / 0)}0%,100%{box-shadow:0 0 0 0 hsl(var(--amber) / .3)}}
+  .card-name{margin:var(--space-3) 0 var(--space-1);font-weight:650;font-size:15px}
+  .card-path{color:hsl(var(--muted));font-size:var(--text-xs);word-break:break-all;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card-note{margin-top:var(--space-1);color:hsl(var(--muted));font-size:var(--text-sm);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card-meta{display:flex;gap:var(--space-2);flex-wrap:wrap;margin:var(--space-3) 0 var(--space-3);font-size:var(--text-xs);align-items:center}
+  .ok{color:hsl(var(--green))} .bad{color:hsl(var(--red))} .warn{color:hsl(var(--amber))} .muted{color:hsl(var(--muted))}
+  .card-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-1);margin-top:auto;
+    border-top:1px solid hsl(var(--line));padding-top:var(--space-3)}
+  .card-actions .btn.primary{grid-column:1/-1;min-width:0}
+  .empty{grid-column:1/-1;text-align:center;padding:44px var(--space-5);color:hsl(var(--muted));
+    background:hsl(var(--surface));border:1px dashed hsl(215 24% 82%);border-radius:var(--radius-lg)}
+  .empty-art{width:52px;height:52px;margin:0 auto var(--space-3);border-radius:16px;display:grid;place-items:center;
+    background:linear-gradient(135deg,hsl(var(--primary-soft)),hsl(var(--teal-soft)));color:hsl(var(--primary))}
+  .empty-art svg{width:26px;height:26px}
+  .empty strong{display:block;color:hsl(var(--text));font-size:var(--text-base);margin-bottom:var(--space-1)}
+  .empty p{margin:0 0 var(--space-4);font-size:var(--text-sm)}
+
+  .status-rail{position:sticky;top:96px;display:grid;gap:var(--space-3);min-width:0}
+  .panel{background:hsl(var(--surface));border:1px solid hsl(var(--line));border-radius:var(--radius-lg);
+    box-shadow:var(--shadow-card);overflow:hidden}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
+    padding:var(--space-3) var(--space-4);border-bottom:1px solid hsl(var(--line));min-height:58px}
+  .panel-title{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+  .panel-title h3{margin:0;font-size:var(--text-md);font-weight:650;white-space:nowrap}
+  .panel-mark{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;
+    background:hsl(var(--primary-soft));color:hsl(var(--primary));font-size:10px;font-weight:750;letter-spacing:.3px}
+  .panel-mark.chain{background:linear-gradient(135deg,hsl(var(--primary-soft)),hsl(var(--teal-soft)));color:hsl(var(--teal))}
+  .panel-mark.events{background:hsl(var(--violet-soft));color:hsl(var(--violet))}
+  .panel-actions{display:flex;align-items:center;gap:var(--space-1);flex:none}
+  .panel-body{padding:var(--space-3) var(--space-4) var(--space-4)}
+
+  .chain{list-style:none;margin:0;padding:0}
+  .hop{position:relative;display:flex;align-items:center;gap:var(--space-2);padding:7px 0 7px 24px;min-width:0}
+  .hop::before{content:"";position:absolute;left:4px;top:13px;width:10px;height:10px;border-radius:50%;
+    background:hsl(215 16% 78%);box-shadow:0 0 0 3px hsl(215 16% 78% / .18);transition:background var(--transition),box-shadow var(--transition)}
+  .hop:not(:last-child)::after{content:"";position:absolute;left:8px;top:26px;bottom:-4px;width:2px;border-radius:2px;
+    background:hsl(var(--line))}
+  .hop.good::before{background:hsl(var(--hop));box-shadow:0 0 0 3px hsl(var(--hop) / .18)}
+  .hop.bad::before{background:hsl(var(--red));box-shadow:0 0 0 3px hsl(var(--red) / .15)}
+  .hop.warn::before{background:hsl(var(--amber));box-shadow:0 0 0 3px hsl(var(--amber) / .18)}
+  .hop.flow:not(:last-child)::after{
+    background:linear-gradient(180deg,hsl(var(--hop)) 0 40%,hsl(var(--line)) 40% 100%);
+    background-size:100% 14px;animation:flow 1.1s linear infinite}
+  @keyframes flow{to{background-position:0 14px}}
+  .hop-main{min-width:0;flex:1}
+  .hop-main strong{display:block;font-size:var(--text-sm);font-weight:600}
+  .hop-main span{display:block;color:hsl(var(--muted));font-size:var(--text-xs);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hop-state{flex:none;font-size:var(--text-xs);color:hsl(var(--muted));font-variant-numeric:tabular-nums}
+  .hop.good .hop-state{color:hsl(var(--green))}
+  .hop.bad .hop-state{color:hsl(var(--red))}
+  .hop.warn .hop-state{color:hsl(var(--amber))}
+  button.hop{position:static;width:100%;border:0;background:transparent;text-align:left;font:inherit;color:inherit;
+    border-radius:8px;padding:0;display:flex;align-items:center;gap:var(--space-2)}
+  button.hop::before,button.hop::after{content:none}
+  button.hop:hover{background:hsl(var(--surface-soft))}
+  .spark-wrap{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid hsl(var(--line))}
+  .spark-head{display:flex;align-items:baseline;justify-content:space-between;font-size:var(--text-xs);color:hsl(var(--muted))}
+  .spark-head strong{font-size:var(--text-md);color:hsl(var(--text));font-variant-numeric:tabular-nums}
+  #spark{display:block;width:100%;height:44px;margin-top:6px}
+  .spark-foot{display:flex;justify-content:space-between;font-size:var(--text-xs);color:hsl(215 14% 62%);
+    font-variant-numeric:tabular-nums;margin-top:2px}
+
+  .adb-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:var(--space-2);padding:7px 0;font-size:var(--text-sm)}
+  .adb-key{color:hsl(var(--muted))}
+  .adb-val{min-width:0;color:hsl(var(--text));word-break:break-word}
+  .adb-path{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:var(--text-xs);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .adb-forward{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:var(--text-xs);line-height:1.7}
+  .adb-actions{display:flex;gap:var(--space-2);margin-top:var(--space-3)}
+  .adb-actions .btn{flex:1}
+  .inspect{margin-top:var(--space-3);padding:9px 11px;border-radius:var(--radius-sm);font-size:var(--text-sm);
+    background:hsl(var(--surface-soft));border:1px solid hsl(var(--line));color:hsl(var(--muted))}
+  .inspect.good{background:hsl(var(--green-soft));border-color:hsl(var(--green) / .2);color:hsl(var(--green))}
+  .inspect.bad{background:hsl(var(--red-soft));border-color:hsl(var(--red) / .2);color:hsl(var(--red))}
+  .inspect.warn{background:hsl(var(--amber-soft));border-color:hsl(var(--amber) / .2);color:hsl(var(--amber))}
+  .adb-settings{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid hsl(var(--line))}
+  .field-label{display:block;margin-bottom:var(--space-2);font-size:var(--text-sm);color:hsl(var(--muted))}
+  .field-input{display:block;width:100%;margin-top:5px;padding:8px 10px;border:1px solid hsl(var(--line));
+    border-radius:var(--radius-sm);background:hsl(var(--surface-soft));color:hsl(var(--text));font-size:var(--text-sm);outline:none}
+  .field-input:focus{border-color:hsl(var(--primary))}
+  .inline-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-3)}
+  .metric-list{display:grid;gap:var(--space-3)}
+  .metric-row{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3);font-size:var(--text-sm)}
+  .metric-row span{color:hsl(var(--muted));white-space:nowrap}
+  .metric-row strong{font-weight:550;text-align:right;min-width:0;word-break:break-word}
+  .proxy-panel .btn{margin-top:var(--space-4)}
+  .rail-note{padding:0 var(--space-1);color:hsl(var(--muted));font-size:var(--text-xs);line-height:1.6}
+
+  .events-body{max-height:236px;overflow:auto;padding:var(--space-1) var(--space-4) var(--space-3)}
+  .event-row{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:var(--space-3);align-items:center;
+    padding:6px 0;border-bottom:1px dashed hsl(var(--line));font-size:var(--text-sm)}
+  .event-row:last-child{border-bottom:0}
+  .event-time{color:hsl(215 14% 62%);font:var(--text-xs)/1.4 ui-monospace,Consolas,monospace}
+  .event-host{min-width:0}
+  .event-host .h{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:var(--text-sm)}
+  .event-host .r{display:block;color:hsl(var(--muted));font-size:var(--text-xs);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .event-host .e{display:block;color:hsl(var(--red));font-size:var(--text-xs);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .events-empty{padding:26px var(--space-4);text-align:center;color:hsl(var(--muted));font-size:var(--text-sm)}
+  .events-empty .btn{margin-top:var(--space-3)}
+
+  .log-panel{background:hsl(var(--surface));border:1px solid hsl(var(--line));
+    border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden}
+  .log-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
+    padding:var(--space-3) var(--space-4);border-bottom:1px solid hsl(var(--line))}
+  .log-head h3{margin:0;font-size:var(--text-md);display:flex;align-items:center;gap:var(--space-2);
+    cursor:pointer;user-select:none}
+  .log-head .chevron{display:inline-block;transition:transform var(--transition);color:hsl(var(--muted));font-size:10px}
+  .log-count{color:hsl(var(--muted));font-weight:400}
+  .log-tools{display:flex;align-items:center;gap:var(--space-2)}
+  .log-panel.collapsed .log-list,.log-panel.collapsed .log-tools .chips{display:none}
+  .log-panel.collapsed .chevron{transform:rotate(-90deg)}
+  .log-list{padding:var(--space-2) var(--space-4) var(--space-3);max-height:210px;overflow:auto;
+    font:var(--text-sm)/1.7 ui-monospace,Consolas,"Cascadia Code",monospace}
+  .log-row{display:flex;gap:var(--space-3);padding:3px 0;border-bottom:1px dashed hsl(var(--line))}
+  .log-row:last-child{border-bottom:0}
+  .log-time{color:hsl(215 14% 62%);flex:none}
+  .log-msg{min-width:0;word-break:break-word;white-space:pre-wrap}
+  .log-row.info .log-msg{color:hsl(var(--text))} .log-row.ok .log-msg{color:hsl(var(--green))}
+  .log-row.err .log-msg{color:hsl(var(--red))} .log-row.dim .log-msg{color:hsl(var(--muted))}
+
+  .modal-mask{position:fixed;inset:0;background:hsl(222 47% 11% / .34);
+    display:grid;place-items:center;z-index:20;backdrop-filter:blur(3px);padding:var(--space-4)}
+  .modal{width:min(540px,100%);max-height:88vh;overflow:auto;background:hsl(var(--surface));
+    border-radius:18px;padding:var(--space-6);box-shadow:var(--shadow-modal);animation:modalIn .22s cubic-bezier(.2,.7,.3,1)}
+  @keyframes modalIn{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
+  .modal h3{margin:0 0 var(--space-5);font-size:var(--text-lg)}
+  .modal label{display:block;margin-bottom:var(--space-3);font-size:var(--text-sm);color:hsl(var(--muted))}
+  .modal input,.modal select,.modal textarea{display:block;width:100%;margin-top:5px;
+    padding:9px 11px;border:1px solid hsl(var(--line));border-radius:var(--radius-sm);background:hsl(var(--surface-soft));
+    color:hsl(var(--text));font-size:var(--text-md);outline:none}
+  .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:hsl(var(--primary))}
+  .modal label.switch{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3);cursor:pointer}
+  .modal label.switch input{width:16px;height:16px;margin:0;padding:0;border:0;background:transparent;flex:none}
+  .modal textarea{resize:vertical;min-height:66px}
+  .input-row{display:flex;gap:var(--space-2);margin-top:5px}
+  .input-row input{margin-top:0;flex:1}
+  .input-row .btn{flex:none;white-space:nowrap}
+  .modal-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-5)}
+  .modal.small{width:min(420px,100%)}
+  .modal.small p{margin:0;color:hsl(var(--muted));font-size:var(--text-md);line-height:1.65;white-space:pre-wrap}
+  .foot{margin-top:var(--space-5);text-align:center;color:hsl(215 14% 62%);font-size:var(--text-xs)}
+  .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
+    background:hsl(var(--text));color:hsl(0 0% 100%);padding:11px 18px;border-radius:10px;font-size:var(--text-md);
+    box-shadow:0 10px 30px hsl(222 47% 11% / .2);z-index:30;opacity:0;transition:var(--transition);pointer-events:none;
+    display:flex;align-items:center;gap:var(--space-3);max-width:min(560px,92vw)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);pointer-events:auto}
+  .toast.err{background:hsl(var(--red))}
+  .toast.ok{background:hsl(142 60% 30%)}
+  .toast button{border:0;background:hsl(0 0% 100% / .18);color:inherit;padding:4px 12px;border-radius:7px;
+    font-size:var(--text-sm);font-weight:600;flex:none}
+  .toast button:hover{background:hsl(0 0% 100% / .3)}
+  @media (max-width:960px){
+    .dashboard{grid-template-columns:1fr}
+    .status-rail{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .chain-panel{grid-column:1/-1}
+    .rail-note{grid-column:1/-1}
+  }
+  @media (max-width:720px){
+    .app-header{height:auto;min-height:72px;align-items:flex-start;flex-wrap:wrap;padding:14px 18px;gap:var(--space-3)}
+    .header-actions{width:100%;justify-content:space-between;gap:var(--space-2)}
+    .proxy-pill{max-width:none;flex:1}
+    .app-main{padding:var(--space-4) 18px var(--space-6)}
+    .status-rail{grid-template-columns:1fr}
+    .section-head{align-items:flex-start;flex-wrap:wrap}
+    .grid{grid-template-columns:1fr}
+    .brand p{display:none}
+    .search{max-width:none}
+    .log-head{flex-wrap:wrap}
+    .panel-head{flex-wrap:wrap}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+<header class="app-header">
+  <div class="brand">
+    <div class="logo"><img src="/icon.svg" alt="DroidBridge"></div>
+    <div><h1>DroidBridge</h1><p>进程级网络应用台 · 经 ADB 桥接手机出口 · 不碰 TUN / 系统代理</p></div>
+  </div>
+  <div class="header-actions">
+    <div class="proxy-pill">
+      <span class="dot" id="proxyDot"></span>
+      <span id="proxyText">检测中…</span>
+    </div>
+    <label class="toggle" title="开启后，从应用台启动的进程才会注入代理环境">
+      <input type="checkbox" id="proxyEnabled">
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      <span class="toggle-label">代理注入</span>
+    </label>
+    <button class="btn tiny" id="btnSettings">设置</button>
+  </div>
+</header>
+
+<main class="app-main">
+  <div class="dashboard" id="dashboard">
+    <section class="workspace" id="appWorkspace" aria-labelledby="appsTitle">
+      <div>
+        <div class="section-head">
+          <div>
+            <h2 id="appsTitle">我的应用</h2>
+            <p class="hint">只有从这里启动的应用才带代理环境；从桌面快捷方式启动不会。</p>
+          </div>
+          <button class="btn primary" id="btnAdd">+ 添加应用</button>
+        </div>
+        <div class="toolbar" style="margin-top:var(--space-4)">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="appSearch" type="search" placeholder="搜索名称、路径或备注（按 / 聚焦）" aria-label="搜索应用">
+            <button class="search-clear" id="btnSearchClear" hidden aria-label="清除搜索">×</button>
+          </div>
+          <div class="chips" id="appChips" role="group" aria-label="应用筛选">
+            <button class="chip active" data-filter="all">全部 <span class="n" id="nAll"></span></button>
+            <button class="chip" data-filter="running">运行中 <span class="n" id="nRunning"></span></button>
+            <button class="chip" data-filter="issue">异常 <span class="n" id="nIssue"></span></button>
+          </div>
+          <select class="sort-select" id="appSort" aria-label="排序">
+            <option value="default">默认顺序</option>
+            <option value="name">名称 A→Z</option>
+            <option value="running">运行中优先</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid" id="appGrid"></div>
+
+      <section class="panel events-panel" id="eventsPanel" aria-labelledby="eventsTitle">
+        <div class="panel-head">
+          <div class="panel-title"><span class="panel-mark events">分流</span><h3 id="eventsTitle">分流实况</h3><span class="badge" id="eventsCount"></span></div>
+          <div class="panel-actions">
+            <div class="chips" id="eventChips" role="group" aria-label="分流筛选">
+              <button class="chip tiny active" data-efilter="all">全部</button>
+              <button class="chip tiny" data-efilter="PROXY">走代理</button>
+              <button class="chip tiny" data-efilter="DIRECT">直连</button>
+              <button class="chip tiny" data-efilter="ERROR">错误</button>
+            </div>
+          </div>
+        </div>
+        <div class="events-body" id="eventsBody"></div>
+      </section>
+
+      <section class="log-panel" id="logPanel">
+        <div class="log-head">
+          <h3><span class="chevron" id="logChevron">▼</span>运行日志<span class="log-count" id="logCount"></span></h3>
+          <div class="log-tools">
+            <div class="chips" id="logChips" role="group" aria-label="日志筛选">
+              <button class="chip tiny active" data-lfilter="all">全部</button>
+              <button class="chip tiny" data-lfilter="ok">成功</button>
+              <button class="chip tiny" data-lfilter="err">错误</button>
+            </div>
+            <button class="btn tiny" id="btnCopyLog">复制</button>
+            <button class="btn tiny" id="btnClearLog">清空</button>
+          </div>
+        </div>
+        <div class="log-list" id="logList"></div>
+      </section>
+    </section>
+
+    <aside class="status-rail" id="statusRail" aria-label="连接与代理状态">
+      <section class="panel chain-panel" id="chainPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span class="panel-mark chain">链路</span><h3>代理链路</h3></div>
+          <span class="badge" id="chainBadge">检测中</span>
+        </div>
+        <div class="panel-body">
+          <ol class="chain" id="chain">
+            <li class="hop" id="hopApps" style="--hop:var(--violet)">
+              <div class="hop-main"><strong>应用进程</strong><span id="hopAppsSub">—</span></div>
+              <span class="hop-state" id="hopAppsState"></span>
+            </li>
+            <li class="hop" id="hopEntry" style="--hop:var(--primary)">
+              <button class="hop" type="button" id="hopEntryBtn" title="打开代理设置">
+                <div class="hop-main"><strong>DroidBridge 入口</strong><span id="hopEntrySub">—</span></div>
+                <span class="hop-state" id="hopEntryState"></span>
+              </button>
+            </li>
+            <li class="hop" id="hopClash" style="--hop:var(--teal)">
+              <button class="hop" type="button" id="hopClashBtn" title="查看 ADB 转发状态">
+                <div class="hop-main"><strong>手机 Clash</strong><span id="hopClashSub">—</span></div>
+                <span class="hop-state" id="hopClashState"></span>
+              </button>
+            </li>
+            <li class="hop" id="hopNet" style="--hop:var(--green)">
+              <div class="hop-main"><strong>目标站点</strong><span id="hopNetSub">按分流规则直连或走代理</span></div>
+              <span class="hop-state" id="hopNetState"></span>
+            </li>
+          </ol>
+          <div class="spark-wrap">
+            <div class="spark-head"><span>入口延迟趋势</span><strong id="sparkNow">—</strong></div>
+            <svg id="spark" viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="hsl(221 83% 60%)" stop-opacity=".22"/>
+                  <stop offset="1" stop-color="hsl(221 83% 60%)" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path id="sparkArea" fill="url(#sparkGrad)" d=""/>
+              <path id="sparkLine" fill="none" stroke="hsl(221 83% 60%)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d=""/>
+            </svg>
+            <div class="spark-foot"><span id="sparkMin"></span><span id="sparkMax"></span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel adb-panel" id="adbPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span class="panel-mark">ADB</span><h3>手机连接</h3></div>
+          <div class="panel-actions">
+            <button class="btn tiny" id="btnAdbSettings">设置</button>
+            <button class="btn tiny" id="btnAdbRefresh">刷新</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="adb-row"><span class="adb-key">adb</span><span class="adb-val adb-path" id="adbPath">检测中…</span></div>
+          <div class="adb-row"><span class="adb-key">设备</span><span class="adb-val" id="adbDevices">—</span></div>
+          <div class="adb-row"><span class="adb-key">转发</span><span class="adb-val adb-forward" id="adbForwards">—</span></div>
+          <div class="adb-actions">
+            <button class="btn primary" id="btnAdbForward">建立转发</button>
+            <button class="btn danger" id="btnAdbUnforward">删除转发</button>
+          </div>
+          <div class="inspect" id="adbHint" hidden></div>
+          <div class="adb-settings" id="adbSettings" hidden>
+            <label class="field-label" for="sAdbPath">adb 可执行文件路径（留空则使用 PATH 中的 adb）</label>
+            <input class="field-input" id="sAdbPath" placeholder="C:\Users\...\platform-tools\adb.exe">
+            <div class="inline-actions">
+              <button class="btn tiny" id="btnAdbSettingsCancel">取消</button>
+              <button class="btn tiny primary" id="btnAdbSettingsSave">保存</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel proxy-panel">
+        <div class="panel-head">
+          <div class="panel-title"><span class="panel-mark">NET</span><h3>代理概览</h3></div>
+          <span class="badge" id="proxyPanelBadge">检测中</span>
+        </div>
+        <div class="panel-body">
+          <div class="metric-list">
+            <div class="metric-row"><span>手机 Clash 上游</span><strong id="proxyUpstream">—</strong></div>
+            <div class="metric-row"><span>本地入口</span><strong id="proxyLocal">—</strong></div>
+            <div class="metric-row"><span>YAML 分流</span><strong id="proxyRouting">—</strong></div>
+          </div>
+          <button class="btn full" id="btnProxySettings">代理设置</button>
+        </div>
+      </section>
+
+      <div class="rail-note">所有代理仅影响从 DroidBridge 启动的应用，不会修改系统代理或全局环境变量。</div>
+    </aside>
+  </div>
+
+  <div class="foot">子进程环境变量由 Python 后端注入 · 关闭窗口即结束服务 · 配置存于 config.json</div>
+</main>
+
+<div class="modal-mask" id="editor" hidden>
+  <div class="modal">
+    <h3 id="editorTitle">添加应用</h3>
+    <label>应用名称<input id="fName" placeholder="Antigravity"></label>
+    <label>可执行文件完整路径
+      <div class="input-row">
+        <input id="fExe" placeholder="%LOCALAPPDATA%\Programs\...\App.exe">
+        <button type="button" class="btn" id="btnPickExe">浏览…</button>
+      </div>
+    </label>
+    <div class="inspect" id="inspectBox">输入路径后自动识别网络栈类型</div>
+    <label>启动参数（可选）<input id="fArgs" placeholder="--some-flag --foo=bar"></label>
+    <label>网络栈类型
+      <select id="fKind">
+        <option value="auto">自动识别（推荐）</option>
+        <option value="electron">Electron / Chromium（env + 启动参数）</option>
+        <option value="firefox">Firefox / Gecko（独立配置目录 + user.js）</option>
+        <option value="generic">普通应用（仅环境变量）</option>
+      </select>
+    </label>
+    <label>应用直连例外（可选，与全局规则一并生效）
+      <textarea id="fBypass" placeholder="填域名或 IP，用逗号或换行分隔"></textarea>
+    </label>
+    <label>备注<input id="fNote" placeholder="可选"></label>
+    <div class="modal-actions">
+      <button class="btn" id="btnCancel">取消</button>
+      <button class="btn primary" id="btnSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="settings" hidden>
+  <div class="modal">
+    <h3>代理设置</h3>
+    <label>手机 Clash 上游主机<input id="sHost" placeholder="127.0.0.1"></label>
+    <label>手机 Clash 上游端口<input id="sPort" type="number" placeholder="5038"></label>
+    <label>DroidBridge 分流入口端口<input id="sListenPort" type="number" placeholder="10086"></label>
+    <label class="switch"><input type="checkbox" id="sRouterEnabled"><span>启用本地 YAML 分流</span></label>
+    <label>规则文件路径<input id="sRulesFile" placeholder="rules.yaml"></label>
+    <label>直连例外（逗号或换行分隔，Chromium 侧自动转分号）
+      <textarea id="sBypass" placeholder="localhost,127.0.0.1,::1"></textarea>
+    </label>
+    <div class="inspect" id="settingsHint"></div>
+    <div class="modal-actions">
+      <button class="btn" id="btnSettingsCancel">取消</button>
+      <button class="btn primary" id="btnSettingsSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="confirm" hidden>
+  <div class="modal small" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+    <h3 id="confirmTitle">确认操作</h3>
+    <p id="confirmBody"></p>
+    <div class="modal-actions">
+      <button class="btn" id="confirmCancel">取消</button>
+      <button class="btn primary" id="confirmOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const TOKEN = document.querySelector('meta[name="pd-token"]')?.content || '';
+let STATE = null;
+let EDIT_ID = null;
+let LOGS = [];
+let inspectTimer = null;
+let APP_FILTER = 'all';
+let APP_SORT = 'default';
+let APP_QUERY = '';
+let EVENT_FILTER = 'all';
+let LOG_FILTER = 'all';
+let LATENCY_HISTORY = [];
+let lastGridSig = '';
+let prevIds = new Set();
+let lastEventsSig = '';
+let confirmResolver = null;
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+function pad(n){ return String(n).padStart(2,'0'); }
+function now(){ const d=new Date(); return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()); }
+function toast(msg, opts){
+  opts = opts || {};
+  const el = $('#toast');
+  el.className = 'toast show' + (opts.type ? ' ' + opts.type : '');
+  el.innerHTML = '';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  el.appendChild(span);
+  if(opts.action){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = opts.action.label;
+    btn.onclick = () => { el.classList.remove('show'); opts.action.fn(); };
+    el.appendChild(btn);
+  }
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), opts.duration || (opts.action ? 6000 : 2400));
+}
+function askConfirm(opts){
+  $('#confirmTitle').textContent = opts.title || '确认操作';
+  $('#confirmBody').textContent = opts.body || '';
+  const ok = $('#confirmOk');
+  ok.textContent = opts.okText || '确定';
+  ok.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
+  $('#confirm').hidden = false;
+  ok.focus();
+  return new Promise(resolve => { confirmResolver = resolve; });
+}
+function settleConfirm(value){
+  if(!confirmResolver) return;
+  const r = confirmResolver; confirmResolver = null;
+  $('#confirm').hidden = true;
+  r(value);
+}
+function logBatch(items){
+  const t=now();
+  const rows=items.map(it=>({t, msg:it.msg, type:it.type||'info'}));
+  LOGS=rows.concat(LOGS).slice(0,80);
+  renderLogs();
+}
+function log(msg,type='info'){
+  logBatch([{msg,type}]);
+}
+const LOG_COLLAPSE_KEY = 'droidbridge.logCollapsed';
+
+function applyLogCollapse(collapsed){
+  $('#logPanel').classList.toggle('collapsed', !!collapsed);
+  $('#logChevron').textContent = collapsed ? '▶' : '▼';
+}
+
+function toggleLog(){
+  const collapsed = !$('#logPanel').classList.contains('collapsed');
+  applyLogCollapse(collapsed);
+  try{ localStorage.setItem(LOG_COLLAPSE_KEY, collapsed ? '1' : '0'); }catch(e){}
+}
+function visibleLogs(){
+  if(LOG_FILTER === 'all') return LOGS;
+  if(LOG_FILTER === 'ok') return LOGS.filter(l => l.type === 'ok');
+  if(LOG_FILTER === 'err') return LOGS.filter(l => l.type === 'err');
+  return LOGS;
+}
+function renderLogs(){
+  const rows = visibleLogs();
+  $('#logList').innerHTML = rows.length
+    ? rows.map(l=>`<div class="log-row ${l.type}"><span class="log-time">${l.t}</span><span class="log-msg">${esc(l.msg)}</span></div>`).join('')
+    : `<div class="log-row dim"><span class="log-time">--:--:--</span><span class="log-msg">${LOGS.length ? '当前筛选下没有日志' : '暂无日志'}</span></div>`;
+  $('#logCount').textContent = LOGS.length ? `· ${rows.length}/${LOGS.length} 条` : '';
+}
+async function api(path,body){
+  const headers={'X-DroidBridge-Token':TOKEN};
+  const opt = body===undefined ? {headers} : {
+    method:'POST',
+    headers:{...headers,'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  };
+  const r = await fetch(path,opt);
+  return r.json();
+}
+function colorOf(name){
+  const palette=['#4b79f7','#7b5cf5','#0ea5a5','#e2803c','#d9538a','#3f8f5b','#5a6acf'];
+  let h=0; for(const ch of String(name)) h=(h*31+ch.charCodeAt(0))>>>0;
+  return palette[h%palette.length];
+}
+function initial(name){
+  const s=String(name||'?').trim(); return s ? (s[0].toUpperCase()) : '?';
+}
+let ADB_STATE = null;
+
+function renderAdb(){
+  const s = ADB_STATE;
+  if(!s) return;
+  const pathEl = $('#adbPath');
+  pathEl.textContent = s.adb_found ? s.adb_path : '未找到';
+  pathEl.title = s.adb_found ? s.adb_path : '请在 ADB 设置中配置可执行文件路径';
+  const devices = s.devices || [];
+  const online = devices.filter(d => d.state === 'device');
+  $('#adbDevices').innerHTML = devices.length
+    ? devices.map(d => {
+        const label = d.model || d.serial;
+        const state = d.state === 'device' ? '在线' : d.state;
+        const cls = d.state === 'device' ? 'good' : 'warn';
+        return `${esc(d.serial)} · ${esc(label)} <span class="badge ${cls}">${esc(state)}</span>`;
+      }).join('<br>')
+    : '<span class="muted">未检测到设备</span>';
+  const target = 'tcp:' + s.upstream_port;
+  const forwards = s.forwards || [];
+  const exists = forwards.some(f => f.local === target);
+  $('#adbForwards').innerHTML = forwards.length
+    ? forwards.map(f => `${esc(f.serial)} ${esc(f.local)} → ${esc(f.remote)}`).join('<br>')
+    : '<span class="muted">暂无转发</span>';
+  const hint = $('#adbHint');
+  if(s.error){
+    hint.className = 'inspect bad';
+    hint.textContent = s.error;
+    hint.hidden = false;
+  }else if(!exists){
+    hint.className = 'inspect warn';
+    hint.textContent = `${target} 转发缺失，可点击「建立转发」`;
+    hint.hidden = false;
+  }else{
+    hint.hidden = true;
+  }
+  const canWrite = s.adb_found && online.length > 0;
+  $('#btnAdbForward').disabled = !canWrite || exists;
+  $('#btnAdbForward').textContent = exists ? '建立转发' : `建立转发 ${target}`;
+  $('#btnAdbForward').title = exists ? `${target} 转发已存在` : `建立 ${target} 转发`;
+  $('#btnAdbUnforward').disabled = !canWrite || !exists;
+  renderChain();
+}
+
+async function loadAdbState(){
+  try{
+    ADB_STATE = await api('/api/adb/state');
+    renderAdb();
+  }catch(e){
+    const hint = $('#adbHint');
+    hint.className = 'inspect bad';
+    hint.textContent = '读取 ADB 状态失败: ' + e;
+  }
+}
+
+function setHop(id, cls, stateText){
+  const el = $('#' + id);
+  el.classList.remove('good','bad','warn','flow');
+  if(cls) el.classList.add(cls);
+  $('#' + id + 'State').textContent = stateText;
+}
+function renderChain(){
+  if(!STATE) return;
+  const p = STATE.proxy;
+  const runningApps = STATE.apps.filter(a => a.running || a.profile_running);
+  setHop('hopApps', runningApps.length ? 'good' : '', runningApps.length ? `${runningApps.length} 个运行中` : '未启动');
+  $('#hopAppsSub').textContent = runningApps.length
+    ? runningApps.slice(0,3).map(a => a.name).join('、') + (runningApps.length > 3 ? ` 等 ${runningApps.length} 个` : '')
+    : '从左侧应用台启动后才会走代理';
+
+  const entryOn = p.enabled && STATE.proxy_online;
+  $('#hopEntrySub').textContent = p.enabled
+    ? `${STATE.proxy_url || '—'}${STATE.router_enabled ? ' · YAML 分流' : ' · 直转上游'}`
+    : '代理注入已关闭';
+  setHop('hopEntry', !p.enabled ? '' : (entryOn ? 'good' : 'bad'),
+    !p.enabled ? '已关闭' : (entryOn ? `${STATE.proxy_latency_ms}ms` : '未监听'));
+
+  const target = 'tcp:' + p.port;
+  const fwd = ADB_STATE && (ADB_STATE.forwards || []).some(f => f.local === target);
+  const clashOn = STATE.proxy_upstream_online;
+  $('#hopClashSub').textContent = `${STATE.proxy_upstream_url || (p.host + ':' + p.port)}` +
+    (ADB_STATE ? (fwd ? ' · ADB 转发已建立' : ' · ADB 转发缺失') : '');
+  setHop('hopClash', clashOn ? 'good' : (fwd === false ? 'warn' : 'bad'),
+    clashOn ? `${STATE.proxy_upstream_latency_ms}ms` : (fwd === false ? '转发缺失' : '离线'));
+
+  const netOk = entryOn && clashOn;
+  setHop('hopNet', netOk ? 'good' : '', netOk ? '链路畅通' : '待连通');
+  $('#hopEntry').classList.toggle('flow', entryOn);
+  $('#hopClash').classList.toggle('flow', entryOn && clashOn);
+
+  const badge = $('#chainBadge');
+  if(!p.enabled){ badge.textContent = '已关闭'; badge.className = 'badge'; }
+  else if(netOk){ badge.textContent = '畅通'; badge.className = 'badge good'; }
+  else if(entryOn || clashOn){ badge.textContent = '部分连通'; badge.className = 'badge warn'; }
+  else { badge.textContent = '未连通'; badge.className = 'badge bad'; }
+  renderSpark();
+}
+function renderSpark(){
+  const h = LATENCY_HISTORY;
+  const line = $('#sparkLine'), area = $('#sparkArea');
+  if(h.length < 2){
+    line.setAttribute('d',''); area.setAttribute('d','');
+    $('#sparkNow').textContent = h.length ? h[h.length-1] + 'ms' : '—';
+    $('#sparkMin').textContent = ''; $('#sparkMax').textContent = '';
+    return;
+  }
+  const W = 240, H = 44, padY = 5;
+  const min = Math.min(...h), max = Math.max(...h);
+  const span = Math.max(max - min, 1);
+  const pts = h.map((v,i) => [ (i/(h.length-1))*W, padY + (1-(v-min)/span)*(H-padY*2) ]);
+  const d = pts.map((pt,i) => (i ? 'L' : 'M') + pt[0].toFixed(1) + ' ' + pt[1].toFixed(1)).join(' ');
+  line.setAttribute('d', d);
+  area.setAttribute('d', d + ` L${W} ${H} L0 ${H} Z`);
+  $('#sparkNow').textContent = h[h.length-1] + 'ms';
+  $('#sparkMin').textContent = '最低 ' + min + 'ms';
+  $('#sparkMax').textContent = '最高 ' + max + 'ms';
+}
+
+function appMatches(a){
+  if(APP_FILTER === 'running' && !(a.running || a.profile_running)) return false;
+  if(APP_FILTER === 'issue' && a.exists) return false;
+  if(APP_QUERY){
+    const q = APP_QUERY.toLowerCase();
+    const hay = [a.name, a.exe, a.note, a.resolved_exe].join(' ').toLowerCase();
+    if(!hay.includes(q)) return false;
+  }
+  return true;
+}
+function renderGrid(){
+  const grid = $('#appGrid');
+  const apps = STATE.apps;
+  const running = apps.filter(a => a.running || a.profile_running).length;
+  const issue = apps.filter(a => !a.exists).length;
+  $('#nAll').textContent = apps.length;
+  $('#nRunning').textContent = running;
+  $('#nIssue').textContent = issue;
+  const sig = JSON.stringify([APP_FILTER, APP_SORT, APP_QUERY, apps.map(a =>
+    [a.id,a.name,a.exe,a.args,a.kind,a.note,a.bypass,a.exists,a.running,a.profile_running,a.effective_kind,a.detected_kind,a.resolved_exe])]);
+  if(sig === lastGridSig) return;
+  lastGridSig = sig;
+  if(!apps.length){
+    grid.innerHTML = `<div class="empty">
+      <div class="empty-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg></div>
+      <strong>还没有应用</strong>
+      <p>把 exe 加进来，从这里启动才会带上代理环境。</p>
+      <button class="btn primary" id="btnEmptyAdd">+ 添加第一个应用</button>
+    </div>`;
+    $('#btnEmptyAdd').onclick = () => openEditor(null);
+    prevIds = new Set();
+    return;
+  }
+  let list = apps.filter(appMatches);
+  if(APP_SORT === 'name') list = list.slice().sort((a,b) => a.name.localeCompare(b.name, 'zh'));
+  else if(APP_SORT === 'running') list = list.slice().sort((a,b) =>
+    ((b.running||b.profile_running)?1:0) - ((a.running||a.profile_running)?1:0));
+  if(!list.length){
+    grid.innerHTML = `<div class="empty">
+      <strong>没有匹配的应用</strong>
+      <p>换个关键词，或清除当前筛选。</p>
+      <button class="btn" id="btnClearFilters">清除搜索与筛选</button>
+    </div>`;
+    $('#btnClearFilters').onclick = () => {
+      APP_QUERY = ''; $('#appSearch').value = ''; $('#btnSearchClear').hidden = true;
+      APP_FILTER = 'all';
+      document.querySelectorAll('#appChips .chip').forEach(c => c.classList.toggle('active', c.dataset.filter === 'all'));
+      renderGrid();
+    };
+    return;
+  }
+  const newIds = new Set(list.map(a => a.id));
+  grid.innerHTML = list.map((a,idx)=>{
+    const kind=a.effective_kind;
+    const tag = kind==='electron' ? '<span class="badge electron">Electron / Chromium</span>'
+              : kind==='firefox'  ? '<span class="badge firefox">Firefox / Gecko</span>'
+                                  : '<span class="badge">通用</span>';
+    const isRunning = a.running || a.profile_running;
+    const runBadge = kind==='firefox'
+      ? (a.profile_running ? '<span class="badge warn"><span class="run-dot"></span>代理实例运行中</span>'
+         : (a.running ? '<span class="badge"><span class="run-dot" style="background:hsl(215 16% 62%)"></span>常规实例运行中</span>' : ''))
+      : (a.running ? '<span class="badge warn"><span class="run-dot"></span>运行中</span>' : '');
+    const iconImg = a.exists
+      ? `<img class="avatar-img" src="/api/app/icon?id=${encodeURIComponent(a.id)}&v=${encodeURIComponent(a.resolved_exe)}&token=${encodeURIComponent(TOKEN)}" alt="" onload="this.parentElement.classList.add('has-icon')" onerror="this.remove()">`
+      : '';
+    const enter = prevIds.size && !prevIds.has(a.id) ? ' enter' : (!prevIds.size ? ' enter' : '');
+    const delay = enter ? ` style="animation-delay:${Math.min(idx*45,360)}ms"` : '';
+    return `<div class="card${isRunning?' running':''}${a.exists?'':' invalid'}${enter}" data-id="${esc(a.id)}"${delay}>
+      <div class="card-top">
+        <div class="avatar" style="background:${colorOf(a.name)}">${iconImg}<span class="avatar-letter">${esc(initial(a.name))}</span></div>
+        ${tag}
+      </div>
+      <div class="card-name">${esc(a.name)}</div>
+      <div class="card-path" title="${esc(a.exe)}">${esc(a.exe)}</div>
+      ${a.note ? `<div class="card-note" title="${esc(a.note)}">${esc(a.note)}</div>` : ''}
+      <div class="card-meta">
+        <span class="${a.exists?'ok':'bad'}">${a.exists?'文件存在':'路径无效'}</span>
+        ${runBadge}
+        ${a.kind==='auto'&&(a.detected_kind==='electron'||a.detected_kind==='firefox')?`<span class="ok">自动识别 ${a.evidence.length} 项特征</span>`:''}
+      </div>
+      <div class="card-actions">
+        <button class="btn primary" data-act="launch" ${a.exists?'':'disabled title="路径无效，请先编辑修正"'}>启动</button>
+        <button class="btn tiny" data-act="preview" title="预览注入明细">预览</button>
+        <button class="btn tiny" data-act="edit">编辑</button>
+        <button class="btn tiny danger icon" data-act="del" aria-label="删除 ${esc(a.name)}" title="删除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+  prevIds = newIds;
+}
+
+function renderEvents(){
+  const body = $('#eventsBody');
+  const countEl = $('#eventsCount');
+  if(!STATE.router_enabled){
+    countEl.textContent = '未启用';
+    countEl.className = 'badge';
+    const sig = 'off';
+    if(sig === lastEventsSig) return;
+    lastEventsSig = sig;
+    body.innerHTML = `<div class="events-empty">本地 YAML 分流未启用，请求会直接转给手机 Clash。<br>启用后可在这里看到每个请求的直连 / 走代理判定。
+      <div><button class="btn tiny" id="btnEventsSettings">打开代理设置</button></div></div>`;
+    $('#btnEventsSettings').onclick = openSettings;
+    return;
+  }
+  const events = STATE.proxy_events || [];
+  const filtered = EVENT_FILTER === 'all' ? events : events.filter(e => (e.action || '').toUpperCase() === EVENT_FILTER);
+  countEl.textContent = events.length ? `${filtered.length}/${events.length} 条` : '等待请求';
+  countEl.className = 'badge' + (events.some(e => !e.ok) ? ' bad' : '');
+  const sig = JSON.stringify([EVENT_FILTER, events.slice(0,40)]);
+  if(sig === lastEventsSig) return;
+  lastEventsSig = sig;
+  if(!filtered.length){
+    body.innerHTML = `<div class="events-empty">${events.length ? '当前筛选下没有记录' : '启动应用并访问网页后，这里会实时显示每个请求的分流结果。'}</div>`;
+    return;
+  }
+  body.innerHTML = filtered.slice(0,40).map(e => {
+    const act = (e.action || '').toUpperCase();
+    const cls = act === 'PROXY' ? 'proxy' : act === 'DIRECT' ? 'direct' : 'bad';
+    const label = act === 'PROXY' ? '走代理' : act === 'DIRECT' ? '直连' : '错误';
+    return `<div class="event-row">
+      <span class="event-time">${esc(e.time || '')}</span>
+      <span class="event-host">
+        <span class="h" title="${esc(e.host)}">${esc(e.host)}</span>
+        ${e.rule ? `<span class="r" title="${esc(e.rule)}">${esc(e.rule)}</span>` : ''}
+        ${e.error ? `<span class="e" title="${esc(e.error)}">${esc(e.error)}</span>` : ''}
+      </span>
+      <span class="badge ${cls}">${label}</span>
+    </div>`;
+  }).join('');
+}
+
+function render(){
+  if(!STATE) return;
+  const p=STATE.proxy;
+  $('#proxyDot').className = 'dot ' + (p.enabled ? (STATE.proxy_online?'on':'off') : '');
+  $('#proxyText').textContent = !p.enabled ? '代理注入已关闭'
+    : (STATE.proxy_online ? `${STATE.proxy_url} · ${STATE.proxy_latency_ms}ms`
+       : (STATE.router_enabled ? '分流入口未监听 · 请重启 DroidBridge' : '代理未监听 · 请启动手机 Clash'));
+  $('#proxyEnabled').checked = !!p.enabled;
+  $('#proxyUpstream').textContent = STATE.proxy_upstream_url || `${p.host}:${p.port}`;
+  $('#proxyLocal').textContent = STATE.proxy_url || '未启动';
+  $('#proxyRouting').textContent = STATE.router_enabled
+    ? (STATE.routing_rules_error ? '规则异常' : '已启用')
+    : '已关闭';
+  $('#proxyRouting').title = STATE.routing_rules_file || '';
+  const proxyBadge = $('#proxyPanelBadge');
+  proxyBadge.textContent = !p.enabled ? '已关闭' : (STATE.proxy_online ? '在线' : '离线');
+  proxyBadge.className = 'badge ' + (!p.enabled ? '' : (STATE.proxy_online ? 'good' : 'warn'));
+  renderChain();
+  renderGrid();
+  renderEvents();
+}
+async function refresh(){
+  try{
+    const res = await api('/api/state');
+    if(!res || res.error){
+      log('获取状态失败: '+(res && res.error ? res.error : '未知错误'),'err');
+      return;
+    }
+    STATE = res;
+    if(res.proxy_online && typeof res.proxy_latency_ms === 'number'){
+      LATENCY_HISTORY.push(res.proxy_latency_ms);
+      if(LATENCY_HISTORY.length > 30) LATENCY_HISTORY.shift();
+    }
+    render();
+  }catch(e){ log('后端连接失败: '+e,'err'); }
+}
+function openEditor(app){
+  EDIT_ID = app ? app.id : null;
+  $('#editorTitle').textContent = app ? '编辑应用' : '添加应用';
+  $('#fName').value = app ? app.name : '';
+  $('#fExe').value = app ? app.exe : '';
+  $('#fArgs').value = app ? (app.args||'') : '';
+  $('#fKind').value = app ? (app.kind||'auto') : 'auto';
+  $('#fBypass').value = app ? (app.bypass||[]).join(', ') : '';
+  $('#fNote').value = app ? (app.note||'') : '';
+  $('#inspectBox').className='inspect';
+  $('#inspectBox').textContent='输入路径后自动识别网络栈类型';
+  $('#editor').hidden=false;
+  $('#fName').focus();
+  if(app) inspect();
+}
+function closeEditor(){ $('#editor').hidden=true; EDIT_ID=null; }
+async function inspect(){
+  const val=$('#fExe').value.trim();
+  const box=$('#inspectBox');
+  if(!val){ box.className='inspect'; box.textContent='输入路径后自动识别网络栈类型'; return; }
+  try{
+    const r=await api('/api/inspect?path='+encodeURIComponent(val));
+    if(!r.exists){
+      box.className='inspect bad'; box.textContent='路径无效或文件不存在：'+r.path; return;
+    }
+    box.className='inspect good';
+    box.textContent = r.kind==='electron'
+      ? `识别为 Electron / Chromium（${r.evidence.length} 项特征）→ 环境变量 + --proxy-server 双注入`
+      : r.kind==='firefox'
+      ? `识别为 Firefox / Gecko（${r.evidence.length} 项特征）→ 独立配置目录 + user.js 注入（不影响日常 Firefox）`
+      : `识别为普通应用 → 仅注入环境变量（如需走 Chromium / Firefox 参数请手动改类型）`;
+  }catch(e){ box.className='inspect bad'; box.textContent='识别失败: '+e; }
+}
+async function saveEditor(){
+  const body={
+    id:EDIT_ID, name:$('#fName').value.trim(), exe:$('#fExe').value.trim(),
+    args:$('#fArgs').value.trim(), kind:$('#fKind').value, note:$('#fNote').value.trim(),
+    bypass:$('#fBypass').value
+  };
+  const label=EDIT_ID?'已更新':'已添加';
+  const r=await api(EDIT_ID?'/api/app/update':'/api/app/add',body);
+  if(!r.ok){ toast(r.error||'保存失败',{type:'err'}); log('保存失败: '+(r.error||''),'err'); return; }
+  STATE=r.state; render(); closeEditor();
+  log(`${label}应用：${body.name}`,'ok'); toast('已保存',{type:'ok'});
+}
+async function doLaunch(id,force=false){
+  const r=await api('/api/launch',{id,force});
+  if(r.code==='already_running'){
+    const yes = await askConfirm({
+      title:'应用已在运行',
+      body:r.error+'\n\n仍要尝试启动吗？新代理配置可能不会生效。',
+      okText:'仍要启动'
+    });
+    if(yes) return doLaunch(id,true);
+    return;
+  }
+  if(r.ok){
+    const envCount = r.env ? Object.keys(r.env).length : 0;
+    const hasInj = r.injected && r.injected.length;
+    const injectDesc = r.kind==='firefox'
+      ? (envCount ? `env + ${hasInj?r.injected.join(', '):'自定义配置'}`
+                  : `${hasInj?r.injected.join(', '):'独立配置'} · 代理注入已关闭`)
+      : (!envCount
+          ? '（无，代理注入已关闭）'
+          : (hasInj ? 'env + '+r.injected.join(', ') : 'env only'));
+    const lines = [{msg:`启动 ${r.app} [${r.kind}] · 注入 ${injectDesc}`, type:'ok'}];
+    if(r.cmd) lines.push({msg:'  ' + r.cmd.join(' '), type:'dim'});
+    if(r.firefox_prefs) lines.push({msg:'  PREF: ' + r.firefox_prefs, type:'dim'});
+    logBatch(lines);
+    toast(r.message||'已启动',{type:'ok'});
+    refresh();
+    setTimeout(refresh, 700);
+  }else{
+    log(r.error||'启动失败','err'); toast(r.error||'启动失败',{type:'err'});
+    refresh();
+  }
+}
+async function preview(id){
+  const r=await api('/api/launch',{id,dry_run:true});
+  if(!r.ok){ log('预览失败: '+(r.error||''),'err'); toast(r.error||'预览失败',{type:'err'}); return; }
+  const envEntries = r.env ? Object.entries(r.env) : [];
+  const envText = envEntries.length
+    ? envEntries.map(([k,v])=>k+'='+v).join(' | ')
+    : '（无，代理注入已关闭）';
+  const flagText = r.injected && r.injected.length
+    ? r.injected.join(', ')
+    : (r.kind==='electron' ? '（无，代理注入已关闭或已手动指定）'
+       : r.kind==='firefox' ? '（已自定义 -profile，未自动覆盖）'
+       : '（无，普通应用只吃 env）');
+  const lines = [
+    {msg:`预览 ${r.app} [${r.kind}]（未启动，代理 ${r.proxy_latency_ms}ms）`, type:'info'},
+    {msg:'  CMD : '+r.cmd.join(' '), type:'dim'},
+    {msg:'  ENV : '+envText, type:'dim'},
+    {msg:'  FLAG: '+flagText, type:'dim'}
+  ];
+  if(r.firefox_profile) lines.push({msg:'  PROF: '+r.firefox_profile, type:'dim'});
+  if(r.firefox_prefs) lines.push({msg:'  PREF: '+r.firefox_prefs, type:'dim'});
+  if(r.kind==='electron' && r.already_running){
+    lines.push({msg:'  注意：该应用当前已在运行，单实例锁会让环境变量不生效', type:'err'});
+  }else if(r.kind==='firefox' && r.profile_running){
+    lines.push({msg:'  注意：该应用的独立代理配置正在运行，需先关闭代理窗口再重新启动', type:'err'});
+  }else if(r.kind==='firefox' && !r.profile_running && r.already_running){
+    lines.push({msg:'  提示：检测到常规实例在运行，DroidBridge 将使用独立配置目录并行启动，互不干扰', type:'dim'});
+  }else if(r.kind==='generic' && r.already_running){
+    lines.push({msg:'  提示：该应用已有实例在运行（普通应用通常支持独立多开）', type:'dim'});
+  }
+  logBatch(lines);
+  applyLogCollapse(false);
+  toast('已把注入明细写到日志');
+}
+async function removeApp(id){
+  const a=STATE.apps.find(x=>x.id===id);
+  const yes = await askConfirm({
+    title:'移除应用',
+    body:`确定从应用台移除「${a?a.name:id}」？\n只删配置，不会卸载程序。移除后可在提示中撤销。`,
+    okText:'移除', danger:true
+  });
+  if(!yes) return;
+  const r=await api('/api/app/delete',{id});
+  if(!r.ok){ toast(r.error||'移除失败',{type:'err'}); log('移除失败: '+(r.error||''),'err'); return; }
+  STATE=r.state; render(); log('已移除应用：'+(a?a.name:id),'info');
+  if(a){
+    const restore = {id:a.id, name:a.name, exe:a.exe, args:a.args||'', kind:a.kind||'auto', note:a.note||'', bypass:(a.bypass||[]).join(', ')};
+    toast(`已移除「${a.name}」`, {action:{label:'撤销', fn:async ()=>{
+      const rr = await api('/api/app/add', restore);
+      if(!rr.ok){ toast(rr.error||'撤销失败',{type:'err'}); return; }
+      STATE = rr.state; render();
+      log('已撤销移除：'+a.name,'ok'); toast('已恢复「'+a.name+'」',{type:'ok'});
+    }}});
+  }
+}
+function openSettings(){
+  const p=STATE.proxy;
+  $('#sHost').value=p.host; $('#sPort').value=p.port;
+  $('#sListenPort').value=p.listen_port || 10086;
+  $('#sRouterEnabled').checked=!!STATE.router_enabled;
+  $('#sRulesFile').value=p.rules_file || 'rules.yaml';
+  $('#sBypass').value=(p.bypass||[]).join(', ');
+  $('#settingsHint').className='inspect';
+  if(STATE.router_enabled){
+    const ruleNote=STATE.routing_rules_error ? ` · ${STATE.routing_rules_error}` : '';
+    $('#settingsHint').textContent=`分流入口 ${STATE.proxy_url} · 上游 ${STATE.proxy_upstream_url} · 入口 ${STATE.proxy_online?'在线':'离线'} · 上游 ${STATE.proxy_upstream_online?'在线':'离线'}${ruleNote}`;
+    if(STATE.routing_rules_error) $('#settingsHint').className='inspect bad';
+  }else{
+    $('#settingsHint').textContent=`当前代理 ${STATE.proxy_url} · ${STATE.proxy_online?'在线':'离线'}`;
+  }
+  $('#settings').hidden=false;
+  $('#sHost').focus();
+}
+async function saveSettings(){
+  const rawPort=$('#sPort').value.trim();
+  const body={
+    proxy:{
+      host:$('#sHost').value.trim(),
+      port:rawPort === '' ? '' : Number(rawPort),
+      listen_port:Number($('#sListenPort').value),
+      router_enabled:$('#sRouterEnabled').checked,
+      rules_file:$('#sRulesFile').value.trim(),
+      bypass:$('#sBypass').value,
+      enabled:STATE.proxy.enabled
+    }
+  };
+  try{
+    const r=await api('/api/settings',body);
+    if(!r.ok){
+      toast(r.error||'保存设置失败',{type:'err'});
+      log('保存代理设置失败: '+(r.error||''),'err');
+      return;
+    }
+    STATE=r.state; render(); $('#settings').hidden=true;
+    log(`代理设置已更新：${STATE.proxy_url}`,'ok'); toast('已保存',{type:'ok'});
+  }catch(e){
+    toast('保存设置失败',{type:'err'});
+    log('保存代理设置失败: '+e,'err');
+  }
+}
+function openAdbSettings(){
+  if(!STATE) return;
+  $('#sAdbPath').value=STATE.adb_path || '';
+  $('#adbSettings').hidden=false;
+  $('#sAdbPath').focus();
+}
+function closeAdbSettings(){
+  $('#adbSettings').hidden=true;
+}
+async function saveAdbSettings(){
+  const body={adb_path:$('#sAdbPath').value.trim()};
+  try{
+    const r=await api('/api/settings',body);
+    if(!r.ok){
+      toast(r.error||'保存 ADB 设置失败',{type:'err'});
+      log('保存 ADB 设置失败: '+(r.error||''),'err');
+      return;
+    }
+    STATE=r.state; render(); renderAdb(); closeAdbSettings(); loadAdbState();
+    log('ADB 路径已更新','ok'); toast('ADB 设置已保存',{type:'ok'});
+  }catch(e){
+    toast('保存 ADB 设置失败',{type:'err'});
+    log('保存 ADB 设置失败: '+e,'err');
+  }
+}
+
+$('#appGrid').addEventListener('click',e=>{
+  const btn=e.target.closest('button[data-act]'); if(!btn) return;
+  const id=btn.closest('.card').dataset.id;
+  const act=btn.dataset.act;
+  if(act==='launch') doLaunch(id);
+  else if(act==='preview') preview(id);
+  else if(act==='edit') openEditor(STATE.apps.find(x=>x.id===id));
+  else if(act==='del') removeApp(id);
+});
+$('#btnAdd').onclick=()=>openEditor(null);
+$('#btnCancel').onclick=closeEditor;
+$('#btnSave').onclick=saveEditor;
+$('#editor').onclick=e=>{ if(e.target.id==='editor') closeEditor(); };
+$('#fExe').addEventListener('input',()=>{ clearTimeout(inspectTimer); inspectTimer=setTimeout(inspect,350); });
+$('#btnPickExe').onclick=async ()=>{
+  const btn=$('#btnPickExe');
+  btn.disabled=true;
+  try{
+    const r=await api('/api/pick-exe',{initial:$('#fExe').value.trim()});
+    if(!r.ok){
+      toast(r.error||'无法打开文件选择器',{type:'err'});
+      if(!r.busy) log(r.error||'文件选择失败','err');
+      return;
+    }
+    if(r.path){
+      $('#fExe').value=r.path;
+      if(!$('#fName').value.trim()){
+        const base=r.path.split(/[\\/]/).pop()||'';
+        $('#fName').value=base.replace(/\.[^.]+$/,'');
+      }
+      inspect();
+    }
+  }catch(e){
+    toast('打开文件选择器失败',{type:'err'});
+    log('打开文件选择器失败: '+e,'err');
+  }finally{
+    btn.disabled=false;
+  }
+};
+$('#btnSettings').onclick=openSettings;
+$('#btnProxySettings').onclick=openSettings;
+$('#hopEntryBtn').onclick=openSettings;
+$('#hopClashBtn').onclick=()=>{ loadAdbState(); $('#adbPanel').scrollIntoView({behavior:'smooth',block:'nearest'}); };
+$('#btnSettingsCancel').onclick=()=>$('#settings').hidden=true;
+$('#btnSettingsSave').onclick=saveSettings;
+$('#settings').onclick=e=>{ if(e.target.id==='settings') $('#settings').hidden=true; };
+$('#confirmCancel').onclick=()=>settleConfirm(false);
+$('#confirmOk').onclick=()=>settleConfirm(true);
+$('#confirm').onclick=e=>{ if(e.target.id==='confirm') settleConfirm(false); };
+$('#btnAdbSettings').onclick=openAdbSettings;
+$('#btnAdbSettingsCancel').onclick=closeAdbSettings;
+$('#btnAdbSettingsSave').onclick=saveAdbSettings;
+$('#btnAdbRefresh').onclick=loadAdbState;
+$('#btnAdbForward').onclick=async ()=>{
+  const r = await api('/api/adb/forward',{});
+  if(!r.ok){ toast(r.error||'建立转发失败',{type:'err'}); log('建立 ADB 转发失败: '+(r.error||''),'err'); return; }
+  toast('已建立转发 '+r.local,{type:'ok'});
+  log(`已建立 ADB 转发 ${r.local} → ${r.remote}（${r.serial}）`,'ok');
+  loadAdbState();
+};
+$('#btnAdbUnforward').onclick=async ()=>{
+  const r = await api('/api/adb/unforward',{});
+  if(!r.ok){ toast(r.error||'删除转发失败',{type:'err'}); log('删除 ADB 转发失败: '+(r.error||''),'err'); return; }
+  toast('已删除转发 '+r.local,{type:'ok'});
+  log(`已删除 ADB 转发 ${r.local}`,'ok');
+  loadAdbState();
+};
+$('#logPanel').querySelector('.log-head h3').onclick=toggleLog;
+$('#btnClearLog').onclick=()=>{ LOGS=[]; renderLogs(); };
+$('#btnCopyLog').onclick=async ()=>{
+  const text = visibleLogs().slice().reverse().map(l => `[${l.t}] ${l.msg}`).join('\n');
+  if(!text){ toast('没有可复制的日志'); return; }
+  try{
+    await navigator.clipboard.writeText(text);
+    toast('已复制 '+visibleLogs().length+' 条日志',{type:'ok'});
+  }catch(e){
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast('已复制 '+visibleLogs().length+' 条日志',{type:'ok'}); }
+    catch(e2){ toast('复制失败，请手动选择日志文本',{type:'err'}); }
+    ta.remove();
+  }
+};
+document.querySelectorAll('#logChips .chip').forEach(chip=>{
+  chip.onclick=()=>{
+    LOG_FILTER=chip.dataset.lfilter;
+    document.querySelectorAll('#logChips .chip').forEach(c=>c.classList.toggle('active',c===chip));
+    renderLogs();
+  };
+});
+document.querySelectorAll('#eventChips .chip').forEach(chip=>{
+  chip.onclick=()=>{
+    EVENT_FILTER=chip.dataset.efilter;
+    document.querySelectorAll('#eventChips .chip').forEach(c=>c.classList.toggle('active',c===chip));
+    renderEvents();
+  };
+});
+document.querySelectorAll('#appChips .chip').forEach(chip=>{
+  chip.onclick=()=>{
+    APP_FILTER=chip.dataset.filter;
+    document.querySelectorAll('#appChips .chip').forEach(c=>c.classList.toggle('active',c===chip));
+    renderGrid();
+  };
+});
+$('#appSearch').addEventListener('input',e=>{
+  APP_QUERY=e.target.value.trim();
+  $('#btnSearchClear').hidden=!APP_QUERY;
+  renderGrid();
+});
+$('#btnSearchClear').onclick=()=>{
+  $('#appSearch').value=''; APP_QUERY=''; $('#btnSearchClear').hidden=true;
+  $('#appSearch').focus(); renderGrid();
+};
+$('#appSort').onchange=e=>{ APP_SORT=e.target.value; renderGrid(); };
+$('#proxyEnabled').onchange=async e=>{
+  const enabled=e.target.checked;
+  try{
+    const r=await api('/api/settings',{proxy:{enabled}});
+    if(!r.ok){
+      e.target.checked=!enabled;
+      toast(r.error||'切换失败',{type:'err'});
+      log('切换代理注入失败: '+(r.error||''),'err');
+      return;
+    }
+    STATE=r.state; render();
+    log('代理注入已'+(enabled?'开启':'关闭'),'info');
+  }catch(err){
+    e.target.checked=!enabled;
+    toast('切换失败',{type:'err'});
+    log('切换代理注入失败: '+err,'err');
+  }
+};
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    if(!$('#confirm').hidden){ settleConfirm(false); return; }
+    if(!$('#editor').hidden){ closeEditor(); return; }
+    if(!$('#settings').hidden){ $('#settings').hidden=true; return; }
+    if(!$('#adbSettings').hidden){ closeAdbSettings(); return; }
+  }
+  if(e.key==='/' && !e.ctrlKey && !e.metaKey && !e.altKey){
+    const t=e.target;
+    if(t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT')) return;
+    e.preventDefault();
+    $('#appSearch').focus();
+  }
+});
+window.addEventListener('beforeunload',()=>{
+  try{ navigator.sendBeacon('/api/quit?token='+encodeURIComponent(TOKEN),''); }catch(e){}
+});
+let logCollapsed = false;
+try{ logCollapsed = localStorage.getItem(LOG_COLLAPSE_KEY) === '1'; }catch(e){}
+applyLogCollapse(logCollapsed);
+renderLogs();
+log('DroidBridge 已就绪','ok');
+refresh();
+loadAdbState();
+setInterval(refresh,8000);
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# DroidBridge 的 Clash 风格分流规则子集。
+# 真实代理出口是手机上的 Clash，DroidBridge 只负责在电脑上选择 DIRECT 或 PROXY。
+# 可选。省略时使用 config.json 里的 proxy.host / proxy.port。
+# upstream: http://127.0.0.1:5038
+
+rules:
+  - DOMAIN,localhost,DIRECT
+  # 本机、私网和链路本地地址直连。
+  - IP-CIDR,127.0.0.0/8,DIRECT
+  - IP-CIDR,10.0.0.0/8,DIRECT
+  - IP-CIDR,172.16.0.0/12,DIRECT
+  - IP-CIDR,192.168.0.0/16,DIRECT
+  - IP-CIDR,169.254.0.0/16,DIRECT
+  - IP-CIDR,::1/128,DIRECT
+  - IP-CIDR,fc00::/7,DIRECT
+  - IP-CIDR,fe80::/10,DIRECT
+  # 替换为公司网关和内网服务的实际域名。
+  - DOMAIN,ai-gateway.company.example,DIRECT
+  - DOMAIN-SUFFIX,company.example,DIRECT
+  # 其余目标通过手机 Clash。
+  - MATCH,PROXY
