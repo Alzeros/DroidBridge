@@ -11,14 +11,14 @@
 <style>
   :root{
     --bg:220 33% 97%; --surface:0 0% 100%; --surface-soft:220 40% 98%;
-    --line:220 24% 90%; --text:222 47% 11%; --muted:215 20% 42%;
-    --primary:221 83% 60%; --primary-hover:221 79% 54%; --primary-soft:221 100% 96%;
-    --teal:174 62% 38%; --teal-soft:174 60% 95%;
-    --violet:262 70% 60%; --violet-soft:262 80% 97%;
-    --green:142 71% 45%; --green-soft:142 76% 96%;
-    --red:358 75% 59%; --red-soft:358 100% 97%;
-    --amber:32 95% 44%; --amber-soft:38 100% 96%;
-    --text-xs:11px; --text-sm:12px; --text-md:13px; --text-base:14px;
+    --line:220 24% 90%; --text:222 47% 11%; --muted:215 20% 42%; --subtle:215 16% 42%;
+    --primary:221 76% 50%; --primary-hover:221 79% 44%; --primary-soft:221 100% 96%;
+    --teal:174 68% 29%; --teal-soft:174 60% 95%;
+    --violet:262 62% 48%; --violet-soft:262 80% 97%;
+    --green:142 72% 28%; --green-soft:142 76% 96%;
+    --red:358 72% 47%; --red-soft:358 100% 97%;
+    --amber:32 92% 32%; --amber-soft:38 100% 96%;
+    --text-xs:12px; --text-sm:13px; --text-md:14px; --text-base:14px;
     --text-lg:16px; --text-xl:20px;
     --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
     --space-5:20px; --space-6:24px; --space-8:32px;
@@ -62,14 +62,16 @@
   .header-actions{display:flex;align-items:center;gap:var(--space-4);flex:none}
   .proxy-pill{display:flex;align-items:center;gap:var(--space-2);padding:7px 12px;border-radius:999px;
     background:hsl(var(--surface-soft));border:1px solid hsl(var(--line));font-size:var(--text-sm);
-    color:hsl(var(--muted));max-width:360px}
+    color:hsl(var(--muted));max-width:360px;min-width:0}
+  #btnSettings{white-space:nowrap;flex:none}
   #proxyText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .dot{width:8px;height:8px;border-radius:50%;background:hsl(215 16% 70%);flex:none}
   .dot.on{background:hsl(var(--green));box-shadow:0 0 0 4px hsl(var(--green) / .12);animation:pulse 2.4s infinite}
   .dot.off{background:hsl(var(--red));box-shadow:0 0 0 4px hsl(var(--red) / .1)}
+  .dot.warn{background:hsl(var(--amber));box-shadow:0 0 0 4px hsl(var(--amber) / .12)}
   @keyframes pulse{50%{box-shadow:0 0 0 7px hsl(var(--green) / 0)}}
 
-  .toggle{display:flex;align-items:center;gap:var(--space-2);cursor:pointer;white-space:nowrap;
+  .toggle{display:flex;align-items:center;gap:var(--space-2);cursor:pointer;white-space:nowrap;flex:none;
     font-size:var(--text-sm);color:hsl(var(--muted));position:relative}
   .toggle input{position:absolute;left:0;top:50%;transform:translateY(-50%);width:36px;height:20px;
     margin:0;opacity:0;cursor:pointer;z-index:1}
@@ -84,6 +86,14 @@
   .toggle input:checked ~ .toggle-label{color:hsl(var(--text))}
 
   .app-main{max-width:1180px;margin:0 auto;padding:var(--space-6) 28px var(--space-8)}
+  .mobile-chain-summary{display:none;width:100%;align-items:center;gap:var(--space-3);flex-wrap:wrap;
+    margin:0 0 var(--space-4);padding:10px 12px;border:1px solid hsl(var(--line));border-radius:var(--radius-md);
+    background:hsl(var(--surface));color:hsl(var(--text));text-align:left;font-size:var(--text-sm)}
+  .mobile-chain-summary:hover{border-color:hsl(var(--primary) / .35);background:hsl(var(--primary-soft))}
+  .mobile-chain-main{display:flex;align-items:center;gap:var(--space-2)}
+  .mobile-chain-main strong{font-size:var(--text-sm)}
+  .mobile-chain-meta{margin-left:auto;color:hsl(var(--muted));font-variant-numeric:tabular-nums}
+  .mobile-chain-detail{color:hsl(var(--primary));font-weight:600;white-space:nowrap}
   .dashboard{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--space-5);align-items:start}
   .workspace{min-width:0;display:grid;gap:var(--space-5)}
   .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-4);
@@ -113,7 +123,7 @@
     border-radius:999px;background:hsl(var(--surface));color:hsl(var(--text));font-size:var(--text-sm);outline:none;
     transition:border-color var(--transition),box-shadow var(--transition)}
   .search input:focus{border-color:hsl(var(--primary));box-shadow:0 0 0 3px hsl(var(--primary) / .12)}
-  .search input::placeholder{color:hsl(215 16% 62%)}
+  .search input::placeholder{color:hsl(var(--subtle))}
   .search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:20px;height:20px;
     border:0;border-radius:50%;background:hsl(220 20% 92%);color:hsl(var(--muted));font-size:12px;line-height:1;
     display:grid;place-items:center;padding:0}
@@ -169,9 +179,16 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card-meta{display:flex;gap:var(--space-2);flex-wrap:wrap;margin:var(--space-3) 0 var(--space-3);font-size:var(--text-xs);align-items:center}
   .ok{color:hsl(var(--green))} .bad{color:hsl(var(--red))} .warn{color:hsl(var(--amber))} .muted{color:hsl(var(--muted))}
-  .card-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-1);margin-top:auto;
+  .card-actions{display:flex;flex-direction:column;gap:var(--space-2);margin-top:auto;
     border-top:1px solid hsl(var(--line));padding-top:var(--space-3)}
-  .card-actions .btn.primary{grid-column:1/-1;min-width:0}
+  .card-actions .btn.primary{width:100%;min-width:0}
+  .card-secondary{display:flex;align-items:center;gap:2px;min-width:0}
+  .card-secondary .btn.tiny{border-color:transparent;background:transparent;color:hsl(var(--muted));
+    padding:6px 7px;border-radius:7px;font-weight:500;text-align:left}
+  .card-secondary .btn.tiny:hover{border-color:transparent;background:hsl(var(--surface-soft));color:hsl(var(--text))}
+  .card-secondary .btn.danger{color:hsl(var(--muted));margin-left:auto}
+  .card-secondary .btn.danger:hover{background:hsl(var(--red-soft));color:hsl(var(--red))}
+  .card-secondary .btn.icon{min-width:32px;min-height:32px;justify-content:center;padding:6px}
   .empty{grid-column:1/-1;text-align:center;padding:44px var(--space-5);color:hsl(var(--muted));
     background:hsl(var(--surface));border:1px dashed hsl(215 24% 82%);border-radius:var(--radius-lg)}
   .empty-art{width:52px;height:52px;margin:0 auto var(--space-3);border-radius:16px;display:grid;place-items:center;
@@ -193,6 +210,20 @@
   .panel-mark.events{background:hsl(var(--violet-soft));color:hsl(var(--violet))}
   .panel-actions{display:flex;align-items:center;gap:var(--space-1);flex:none}
   .panel-body{padding:var(--space-3) var(--space-4) var(--space-4)}
+  .rail-detail{border-top:1px solid hsl(var(--line))}
+  .rail-detail-summary{list-style:none;display:flex;align-items:center;justify-content:space-between;
+    gap:var(--space-2);min-height:58px;padding:var(--space-3) var(--space-4);cursor:pointer;
+    transition:background var(--transition)}
+  .rail-detail-summary::-webkit-details-marker{display:none}
+  .rail-detail-summary:hover{background:hsl(var(--surface-soft))}
+  .rail-detail-summary:focus-visible{outline:3px solid hsl(var(--primary) / .2);outline-offset:-3px}
+  .rail-detail-title,.rail-detail-side{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+  .rail-detail-title{font-size:var(--text-md);font-weight:650}
+  .rail-detail-side{flex:none}
+  .detail-chevron{color:hsl(var(--muted));font-size:12px;transition:transform var(--transition)}
+  .rail-detail[open] .detail-chevron{transform:rotate(180deg)}
+  .rail-detail-body{padding:0 var(--space-4) var(--space-4)}
+  .detail-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-bottom:var(--space-2)}
 
   .chain{list-style:none;margin:0;padding:0}
   .hop{position:relative;display:flex;align-items:center;gap:var(--space-2);padding:7px 0 7px 24px;min-width:0}
@@ -223,7 +254,7 @@
   .spark-head{display:flex;align-items:baseline;justify-content:space-between;font-size:var(--text-xs);color:hsl(var(--muted))}
   .spark-head strong{font-size:var(--text-md);color:hsl(var(--text));font-variant-numeric:tabular-nums}
   #spark{display:block;width:100%;height:44px;margin-top:6px}
-  .spark-foot{display:flex;justify-content:space-between;font-size:var(--text-xs);color:hsl(215 14% 62%);
+  .spark-foot{display:flex;justify-content:space-between;font-size:var(--text-xs);color:hsl(var(--subtle));
     font-variant-numeric:tabular-nums;margin-top:2px}
 
   .adb-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:var(--space-2);padding:7px 0;font-size:var(--text-sm)}
@@ -250,13 +281,12 @@
   .metric-row span{color:hsl(var(--muted));white-space:nowrap}
   .metric-row strong{font-weight:550;text-align:right;min-width:0;word-break:break-word}
   .proxy-panel .btn{margin-top:var(--space-4)}
-  .rail-note{padding:0 var(--space-1);color:hsl(var(--muted));font-size:var(--text-xs);line-height:1.6}
 
   .events-body{max-height:236px;overflow:auto;padding:var(--space-1) var(--space-4) var(--space-3)}
   .event-row{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:var(--space-3);align-items:center;
     padding:6px 0;border-bottom:1px dashed hsl(var(--line));font-size:var(--text-sm)}
   .event-row:last-child{border-bottom:0}
-  .event-time{color:hsl(215 14% 62%);font:var(--text-xs)/1.4 ui-monospace,Consolas,monospace}
+  .event-time{color:hsl(var(--subtle));font:var(--text-xs)/1.4 ui-monospace,Consolas,monospace}
   .event-host{min-width:0}
   .event-host .h{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:var(--text-sm)}
@@ -267,22 +297,24 @@
   .events-empty{padding:26px var(--space-4);text-align:center;color:hsl(var(--muted));font-size:var(--text-sm)}
   .events-empty .btn{margin-top:var(--space-3)}
 
-  .log-panel{background:hsl(var(--surface));border:1px solid hsl(var(--line));
-    border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden}
-  .log-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
-    padding:var(--space-3) var(--space-4);border-bottom:1px solid hsl(var(--line))}
-  .log-head h3{margin:0;font-size:var(--text-md);display:flex;align-items:center;gap:var(--space-2);
-    cursor:pointer;user-select:none}
-  .log-head .chevron{display:inline-block;transition:transform var(--transition);color:hsl(var(--muted));font-size:10px}
-  .log-count{color:hsl(var(--muted));font-weight:400}
+  .diagnostics-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+    gap:var(--space-2);padding:var(--space-2) var(--space-3);border-bottom:1px solid hsl(var(--line));min-height:58px}
+  .diagnostics-tabs,.diagnostics-tools{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+  .diagnostics-tabs{gap:var(--space-1)}
+  .diagnostic-tab{display:inline-flex;align-items:center;gap:var(--space-2);border:0;border-radius:9px;
+    background:transparent;color:hsl(var(--muted));padding:5px 8px;font-size:var(--text-md);font-weight:650;
+    transition:background var(--transition),color var(--transition)}
+  .diagnostic-tab:hover{background:hsl(var(--surface-soft));color:hsl(var(--text))}
+  .diagnostic-tab.active{background:hsl(var(--primary-soft));color:hsl(var(--primary))}
+  .diagnostic-tab .panel-mark{width:28px;height:28px}
+  .log-count{color:hsl(var(--muted));font-size:var(--text-xs);font-weight:400}
+  .diagnostics-panel .log-panel{background:hsl(var(--surface));overflow:hidden}
   .log-tools{display:flex;align-items:center;gap:var(--space-2)}
-  .log-panel.collapsed .log-list,.log-panel.collapsed .log-tools .chips{display:none}
-  .log-panel.collapsed .chevron{transform:rotate(-90deg)}
   .log-list{padding:var(--space-2) var(--space-4) var(--space-3);max-height:210px;overflow:auto;
     font:var(--text-sm)/1.7 ui-monospace,Consolas,"Cascadia Code",monospace}
   .log-row{display:flex;gap:var(--space-3);padding:3px 0;border-bottom:1px dashed hsl(var(--line))}
   .log-row:last-child{border-bottom:0}
-  .log-time{color:hsl(215 14% 62%);flex:none}
+  .log-time{color:hsl(var(--subtle));flex:none}
   .log-msg{min-width:0;word-break:break-word;white-space:pre-wrap}
   .log-row.info .log-msg{color:hsl(var(--text))} .log-row.ok .log-msg{color:hsl(var(--green))}
   .log-row.err .log-msg{color:hsl(var(--red))} .log-row.dim .log-msg{color:hsl(var(--muted))}
@@ -294,20 +326,18 @@
   @keyframes modalIn{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
   .modal h3{margin:0 0 var(--space-5);font-size:var(--text-lg)}
   .modal label{display:block;margin-bottom:var(--space-3);font-size:var(--text-sm);color:hsl(var(--muted))}
-  .modal input,.modal select,.modal textarea{display:block;width:100%;margin-top:5px;
+  .modal input,.modal select{display:block;width:100%;margin-top:5px;
     padding:9px 11px;border:1px solid hsl(var(--line));border-radius:var(--radius-sm);background:hsl(var(--surface-soft));
     color:hsl(var(--text));font-size:var(--text-md);outline:none}
-  .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:hsl(var(--primary))}
-  .modal label.switch{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3);cursor:pointer}
-  .modal label.switch input{width:16px;height:16px;margin:0;padding:0;border:0;background:transparent;flex:none}
-  .modal textarea{resize:vertical;min-height:66px}
+  .modal input:focus,.modal select:focus{border-color:hsl(var(--primary))}
   .input-row{display:flex;gap:var(--space-2);margin-top:5px}
   .input-row input{margin-top:0;flex:1}
   .input-row .btn{flex:none;white-space:nowrap}
+  .field-help{margin:-4px 0 var(--space-4);color:hsl(var(--muted));font-size:var(--text-sm);line-height:1.6}
   .modal-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-5)}
   .modal.small{width:min(420px,100%)}
   .modal.small p{margin:0;color:hsl(var(--muted));font-size:var(--text-md);line-height:1.65;white-space:pre-wrap}
-  .foot{margin-top:var(--space-5);text-align:center;color:hsl(215 14% 62%);font-size:var(--text-xs)}
+  .foot{margin-top:var(--space-5);text-align:center;color:hsl(var(--subtle));font-size:var(--text-xs)}
   .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
     background:hsl(var(--text));color:hsl(0 0% 100%);padding:11px 18px;border-radius:10px;font-size:var(--text-md);
     box-shadow:0 10px 30px hsl(222 47% 11% / .2);z-index:30;opacity:0;transition:var(--transition);pointer-events:none;
@@ -319,10 +349,10 @@
     font-size:var(--text-sm);font-weight:600;flex:none}
   .toast button:hover{background:hsl(0 0% 100% / .3)}
   @media (max-width:960px){
+    .mobile-chain-summary{display:flex}
     .dashboard{grid-template-columns:1fr}
     .status-rail{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}
     .chain-panel{grid-column:1/-1}
-    .rail-note{grid-column:1/-1}
   }
   @media (max-width:720px){
     .app-header{height:auto;min-height:72px;align-items:flex-start;flex-wrap:wrap;padding:14px 18px;gap:var(--space-3)}
@@ -334,7 +364,8 @@
     .grid{grid-template-columns:1fr}
     .brand p{display:none}
     .search{max-width:none}
-    .log-head{flex-wrap:wrap}
+    .diagnostics-head{align-items:flex-start;flex-direction:column}
+    .diagnostics-tools{width:100%;overflow-x:auto;padding-bottom:2px}
     .panel-head{flex-wrap:wrap}
   }
   @media (prefers-reduced-motion:reduce){
@@ -346,7 +377,7 @@
 <header class="app-header">
   <div class="brand">
     <div class="logo"><img src="/icon.svg" alt="DroidBridge"></div>
-    <div><h1>DroidBridge</h1><p>进程级网络应用台 · 经 ADB 桥接手机出口 · 不碰 TUN / 系统代理</p></div>
+    <div><h1>DroidBridge</h1><p>进程级代理启动台</p></div>
   </div>
   <div class="header-actions">
     <div class="proxy-pill">
@@ -363,13 +394,18 @@
 </header>
 
 <main class="app-main">
+  <button class="mobile-chain-summary" id="mobileChainSummary" type="button" aria-label="查看完整代理链路">
+    <span class="mobile-chain-main"><span class="dot" id="mobileChainDot"></span><strong id="mobileChainText">链路检测中…</strong></span>
+    <span class="mobile-chain-meta" id="mobileChainMeta">入口 — · Clash —</span>
+    <span class="mobile-chain-detail">详情 <span aria-hidden="true">›</span></span>
+  </button>
   <div class="dashboard" id="dashboard">
     <section class="workspace" id="appWorkspace" aria-labelledby="appsTitle">
       <div>
         <div class="section-head">
           <div>
             <h2 id="appsTitle">我的应用</h2>
-            <p class="hint">只有从这里启动的应用才带代理环境；从桌面快捷方式启动不会。</p>
+            <p class="hint">仅从这里启动的应用使用代理，不影响桌面快捷方式和其他程序。</p>
           </div>
           <button class="btn primary" id="btnAdd">+ 添加应用</button>
         </div>
@@ -394,35 +430,38 @@
 
       <div class="grid" id="appGrid"></div>
 
-      <section class="panel events-panel" id="eventsPanel" aria-labelledby="eventsTitle">
-        <div class="panel-head">
-          <div class="panel-title"><span class="panel-mark events">分流</span><h3 id="eventsTitle">分流实况</h3><span class="badge" id="eventsCount"></span></div>
-          <div class="panel-actions">
+      <section class="panel diagnostics-panel" id="diagnosticsPanel" aria-label="诊断信息">
+        <div class="diagnostics-head">
+          <div class="diagnostics-tabs" role="tablist" aria-label="诊断视图">
+            <button class="diagnostic-tab active" id="tabEvents" role="tab" aria-selected="true" aria-controls="eventsBody">
+              <span class="panel-mark events">分流</span><span>分流实况</span><span class="badge" id="eventsCount"></span>
+            </button>
+            <button class="diagnostic-tab" id="tabLogs" role="tab" aria-selected="false" aria-controls="logPanel">
+              <span>运行日志</span><span class="log-count" id="logCount"></span>
+            </button>
+          </div>
+          <div class="diagnostics-tools">
             <div class="chips" id="eventChips" role="group" aria-label="分流筛选">
               <button class="chip tiny active" data-efilter="all">全部</button>
               <button class="chip tiny" data-efilter="PROXY">走代理</button>
               <button class="chip tiny" data-efilter="DIRECT">直连</button>
               <button class="chip tiny" data-efilter="ERROR">错误</button>
             </div>
-          </div>
-        </div>
-        <div class="events-body" id="eventsBody"></div>
-      </section>
-
-      <section class="log-panel" id="logPanel">
-        <div class="log-head">
-          <h3><span class="chevron" id="logChevron">▼</span>运行日志<span class="log-count" id="logCount"></span></h3>
-          <div class="log-tools">
-            <div class="chips" id="logChips" role="group" aria-label="日志筛选">
-              <button class="chip tiny active" data-lfilter="all">全部</button>
-              <button class="chip tiny" data-lfilter="ok">成功</button>
-              <button class="chip tiny" data-lfilter="err">错误</button>
+            <div class="log-tools" id="logTools" hidden>
+              <div class="chips" id="logChips" role="group" aria-label="日志筛选">
+                <button class="chip tiny active" data-lfilter="all">全部</button>
+                <button class="chip tiny" data-lfilter="ok">成功</button>
+                <button class="chip tiny" data-lfilter="err">错误</button>
+              </div>
+              <button class="btn tiny" id="btnCopyLog">复制</button>
+              <button class="btn tiny" id="btnClearLog">清空</button>
             </div>
-            <button class="btn tiny" id="btnCopyLog">复制</button>
-            <button class="btn tiny" id="btnClearLog">清空</button>
           </div>
         </div>
-        <div class="log-list" id="logList"></div>
+        <div class="events-body" id="eventsBody" role="tabpanel" aria-labelledby="tabEvents"></div>
+        <section class="log-panel" id="logPanel" role="tabpanel" aria-labelledby="tabLogs" hidden>
+          <div class="log-list" id="logList"></div>
+        </section>
       </section>
     </section>
 
@@ -460,66 +499,65 @@
             <svg id="spark" viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true">
               <defs>
                 <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stop-color="hsl(221 83% 60%)" stop-opacity=".22"/>
-                  <stop offset="1" stop-color="hsl(221 83% 60%)" stop-opacity="0"/>
+                  <stop offset="0" stop-color="hsl(221 76% 50%)" stop-opacity=".22"/>
+                  <stop offset="1" stop-color="hsl(221 76% 50%)" stop-opacity="0"/>
                 </linearGradient>
               </defs>
               <path id="sparkArea" fill="url(#sparkGrad)" d=""/>
-              <path id="sparkLine" fill="none" stroke="hsl(221 83% 60%)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d=""/>
+              <path id="sparkLine" fill="none" stroke="hsl(221 76% 50%)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d=""/>
             </svg>
             <div class="spark-foot"><span id="sparkMin"></span><span id="sparkMax"></span></div>
           </div>
         </div>
-      </section>
 
-      <section class="panel adb-panel" id="adbPanel">
-        <div class="panel-head">
-          <div class="panel-title"><span class="panel-mark">ADB</span><h3>手机连接</h3></div>
-          <div class="panel-actions">
-            <button class="btn tiny" id="btnAdbSettings">设置</button>
-            <button class="btn tiny" id="btnAdbRefresh">刷新</button>
-          </div>
-        </div>
-        <div class="panel-body">
-          <div class="adb-row"><span class="adb-key">adb</span><span class="adb-val adb-path" id="adbPath">检测中…</span></div>
-          <div class="adb-row"><span class="adb-key">设备</span><span class="adb-val" id="adbDevices">—</span></div>
-          <div class="adb-row"><span class="adb-key">转发</span><span class="adb-val adb-forward" id="adbForwards">—</span></div>
-          <div class="adb-actions">
-            <button class="btn primary" id="btnAdbForward">建立转发</button>
-            <button class="btn danger" id="btnAdbUnforward">删除转发</button>
-          </div>
-          <div class="inspect" id="adbHint" hidden></div>
-          <div class="adb-settings" id="adbSettings" hidden>
-            <label class="field-label" for="sAdbPath">adb 可执行文件路径（留空则使用 PATH 中的 adb）</label>
-            <input class="field-input" id="sAdbPath" placeholder="C:\Users\...\platform-tools\adb.exe">
-            <div class="inline-actions">
-              <button class="btn tiny" id="btnAdbSettingsCancel">取消</button>
-              <button class="btn tiny primary" id="btnAdbSettingsSave">保存</button>
+        <details class="rail-detail adb-panel" id="adbPanel">
+          <summary class="rail-detail-summary">
+            <span class="rail-detail-title"><span class="panel-mark">ADB</span><span>手机连接</span></span>
+            <span class="rail-detail-side"><span class="badge" id="adbSummaryBadge">检测中</span><span class="detail-chevron">▾</span></span>
+          </summary>
+          <div class="rail-detail-body">
+            <div class="detail-actions">
+              <button class="btn tiny" id="btnAdbSettings">设置</button>
+              <button class="btn tiny" id="btnAdbRefresh">刷新</button>
+            </div>
+            <div class="adb-row"><span class="adb-key">adb</span><span class="adb-val adb-path" id="adbPath">检测中…</span></div>
+            <div class="adb-row"><span class="adb-key">设备</span><span class="adb-val" id="adbDevices">—</span></div>
+            <div class="adb-row"><span class="adb-key">转发</span><span class="adb-val adb-forward" id="adbForwards">—</span></div>
+            <div class="adb-actions">
+              <button class="btn primary" id="btnAdbForward">建立转发</button>
+              <button class="btn danger" id="btnAdbUnforward">删除转发</button>
+            </div>
+            <div class="inspect" id="adbHint" hidden></div>
+            <div class="adb-settings" id="adbSettings" hidden>
+              <label class="field-label" for="sAdbPath">adb 可执行文件路径（留空则使用 PATH 中的 adb）</label>
+              <input class="field-input" id="sAdbPath" placeholder="C:\Users\...\platform-tools\adb.exe">
+              <div class="inline-actions">
+                <button class="btn tiny" id="btnAdbSettingsCancel">取消</button>
+                <button class="btn tiny primary" id="btnAdbSettingsSave">保存</button>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </details>
 
-      <section class="panel proxy-panel">
-        <div class="panel-head">
-          <div class="panel-title"><span class="panel-mark">NET</span><h3>代理概览</h3></div>
-          <span class="badge" id="proxyPanelBadge">检测中</span>
-        </div>
-        <div class="panel-body">
-          <div class="metric-list">
-            <div class="metric-row"><span>手机 Clash 上游</span><strong id="proxyUpstream">—</strong></div>
-            <div class="metric-row"><span>本地入口</span><strong id="proxyLocal">—</strong></div>
-            <div class="metric-row"><span>YAML 分流</span><strong id="proxyRouting">—</strong></div>
+        <details class="rail-detail proxy-panel" id="proxyPanel">
+          <summary class="rail-detail-summary">
+            <span class="rail-detail-title"><span class="panel-mark">NET</span><span>代理配置</span></span>
+            <span class="rail-detail-side"><span class="badge" id="proxyPanelBadge">检测中</span><span class="detail-chevron">▾</span></span>
+          </summary>
+          <div class="rail-detail-body">
+            <div class="metric-list">
+              <div class="metric-row"><span>手机 Clash 上游</span><strong id="proxyUpstream">—</strong></div>
+              <div class="metric-row"><span>本地入口</span><strong id="proxyLocal">—</strong></div>
+              <div class="metric-row"><span>YAML 分流</span><strong id="proxyRouting">—</strong></div>
+            </div>
+            <button class="btn full" id="btnProxySettings">代理设置</button>
           </div>
-          <button class="btn full" id="btnProxySettings">代理设置</button>
-        </div>
+        </details>
       </section>
-
-      <div class="rail-note">所有代理仅影响从 DroidBridge 启动的应用，不会修改系统代理或全局环境变量。</div>
     </aside>
   </div>
 
-  <div class="foot">子进程环境变量由 Python 后端注入 · 关闭窗口即结束服务 · 配置存于 config.json</div>
+  <div class="foot">本地运行 · 关闭窗口即结束服务 · 配置存于 config.json</div>
 </main>
 
 <div class="modal-mask" id="editor" hidden>
@@ -542,9 +580,6 @@
         <option value="generic">普通应用（仅环境变量）</option>
       </select>
     </label>
-    <label>应用直连例外（可选，与全局规则一并生效）
-      <textarea id="fBypass" placeholder="填域名或 IP，用逗号或换行分隔"></textarea>
-    </label>
     <label>备注<input id="fNote" placeholder="可选"></label>
     <div class="modal-actions">
       <button class="btn" id="btnCancel">取消</button>
@@ -559,11 +594,8 @@
     <label>手机 Clash 上游主机<input id="sHost" placeholder="127.0.0.1"></label>
     <label>手机 Clash 上游端口<input id="sPort" type="number" placeholder="5038"></label>
     <label>DroidBridge 分流入口端口<input id="sListenPort" type="number" placeholder="10086"></label>
-    <label class="switch"><input type="checkbox" id="sRouterEnabled"><span>启用本地 YAML 分流</span></label>
-    <label>规则文件路径<input id="sRulesFile" placeholder="rules.yaml"></label>
-    <label>直连例外（逗号或换行分隔，Chromium 侧自动转分号）
-      <textarea id="sBypass" placeholder="localhost,127.0.0.1,::1"></textarea>
-    </label>
+    <label>分流规则文件<input id="sRulesFile" placeholder="rules.yaml"></label>
+    <div class="field-help">所有代理请求统一进入分流入口，由规则文件决定 DIRECT 或 PROXY。</div>
     <div class="inspect" id="settingsHint"></div>
     <div class="modal-actions">
       <button class="btn" id="btnSettingsCancel">取消</button>
@@ -655,15 +687,20 @@ function log(msg,type='info'){
 }
 const LOG_COLLAPSE_KEY = 'droidbridge.logCollapsed';
 
-function applyLogCollapse(collapsed){
-  $('#logPanel').classList.toggle('collapsed', !!collapsed);
-  $('#logChevron').textContent = collapsed ? '▶' : '▼';
+function setDiagnosticTab(tab){
+  const showLogs = tab === 'logs';
+  $('#eventsBody').hidden = showLogs;
+  $('#logPanel').hidden = !showLogs;
+  $('#eventChips').hidden = showLogs;
+  $('#logTools').hidden = !showLogs;
+  $('#tabEvents').classList.toggle('active', !showLogs);
+  $('#tabLogs').classList.toggle('active', showLogs);
+  $('#tabEvents').setAttribute('aria-selected', String(!showLogs));
+  $('#tabLogs').setAttribute('aria-selected', String(showLogs));
 }
 
-function toggleLog(){
-  const collapsed = !$('#logPanel').classList.contains('collapsed');
-  applyLogCollapse(collapsed);
-  try{ localStorage.setItem(LOG_COLLAPSE_KEY, collapsed ? '1' : '0'); }catch(e){}
+function applyLogCollapse(collapsed){
+  setDiagnosticTab(collapsed ? 'events' : 'logs');
 }
 function visibleLogs(){
   if(LOG_FILTER === 'all') return LOGS;
@@ -676,7 +713,7 @@ function renderLogs(){
   $('#logList').innerHTML = rows.length
     ? rows.map(l=>`<div class="log-row ${l.type}"><span class="log-time">${l.t}</span><span class="log-msg">${esc(l.msg)}</span></div>`).join('')
     : `<div class="log-row dim"><span class="log-time">--:--:--</span><span class="log-msg">${LOGS.length ? '当前筛选下没有日志' : '暂无日志'}</span></div>`;
-  $('#logCount').textContent = LOGS.length ? `· ${rows.length}/${LOGS.length} 条` : '';
+  $('#logCount').textContent = LOGS.length ? `${rows.length}/${LOGS.length} 条` : '';
 }
 async function api(path,body){
   const headers={'X-DroidBridge-Token':TOKEN};
@@ -689,7 +726,7 @@ async function api(path,body){
   return r.json();
 }
 function colorOf(name){
-  const palette=['#4b79f7','#7b5cf5','#0ea5a5','#e2803c','#d9538a','#3f8f5b','#5a6acf'];
+  const palette=['#3056c9','#6146c8','#087a7a','#a95517','#b53870','#2f7449','#4555b0'];
   let h=0; for(const ch of String(name)) h=(h*31+ch.charCodeAt(0))>>>0;
   return palette[h%palette.length];
 }
@@ -732,6 +769,20 @@ function renderAdb(){
   }else{
     hint.hidden = true;
   }
+  const adbBadge = $('#adbSummaryBadge');
+  if(s.error || !s.adb_found){
+    adbBadge.textContent = s.error ? '异常' : '未找到 adb';
+    adbBadge.className = 'badge bad';
+  }else if(!online.length){
+    adbBadge.textContent = '无设备';
+    adbBadge.className = 'badge warn';
+  }else if(!exists){
+    adbBadge.textContent = '转发缺失';
+    adbBadge.className = 'badge warn';
+  }else{
+    adbBadge.textContent = '已连接';
+    adbBadge.className = 'badge good';
+  }
   const canWrite = s.adb_found && online.length > 0;
   $('#btnAdbForward').disabled = !canWrite || exists;
   $('#btnAdbForward').textContent = exists ? '建立转发' : `建立转发 ${target}`;
@@ -768,7 +819,7 @@ function renderChain(){
 
   const entryOn = p.enabled && STATE.proxy_online;
   $('#hopEntrySub').textContent = p.enabled
-    ? `${STATE.proxy_url || '—'}${STATE.router_enabled ? ' · YAML 分流' : ' · 直转上游'}`
+    ? `${STATE.proxy_url || '—'} · YAML 分流`
     : '代理注入已关闭';
   setHop('hopEntry', !p.enabled ? '' : (entryOn ? 'good' : 'bad'),
     !p.enabled ? '已关闭' : (entryOn ? `${STATE.proxy_latency_ms}ms` : '未监听'));
@@ -791,6 +842,14 @@ function renderChain(){
   else if(netOk){ badge.textContent = '畅通'; badge.className = 'badge good'; }
   else if(entryOn || clashOn){ badge.textContent = '部分连通'; badge.className = 'badge warn'; }
   else { badge.textContent = '未连通'; badge.className = 'badge bad'; }
+
+  const mobileState = !p.enabled ? '代理已关闭' : (netOk ? '链路畅通' : (entryOn || clashOn ? '部分连通' : '链路未连通'));
+  $('#mobileChainText').textContent = mobileState;
+  $('#mobileChainDot').className = 'dot ' + (!p.enabled ? '' : (netOk ? 'on' : (entryOn || clashOn ? 'warn' : 'off')));
+  $('#mobileChainMeta').textContent = !p.enabled
+    ? '从这里启动的应用将直接联网'
+    : `入口 ${entryOn ? STATE.proxy_latency_ms + 'ms' : '离线'} · Clash ${clashOn ? STATE.proxy_upstream_latency_ms + 'ms' : '离线'}`;
+  $('#mobileChainSummary').setAttribute('aria-label', mobileState + '，查看完整代理链路');
   renderSpark();
 }
 function renderSpark(){
@@ -833,7 +892,7 @@ function renderGrid(){
   $('#nRunning').textContent = running;
   $('#nIssue').textContent = issue;
   const sig = JSON.stringify([APP_FILTER, APP_SORT, APP_QUERY, apps.map(a =>
-    [a.id,a.name,a.exe,a.args,a.kind,a.note,a.bypass,a.exists,a.running,a.profile_running,a.effective_kind,a.detected_kind,a.resolved_exe])]);
+    [a.id,a.name,a.exe,a.args,a.kind,a.note,a.exists,a.running,a.profile_running,a.effective_kind,a.detected_kind,a.native_browser,a.resolved_exe])]);
   if(sig === lastGridSig) return;
   lastGridSig = sig;
   if(!apps.length){
@@ -874,7 +933,7 @@ function renderGrid(){
     const isRunning = a.running || a.profile_running;
     const runBadge = kind==='firefox'
       ? (a.profile_running ? '<span class="badge warn"><span class="run-dot"></span>代理实例运行中</span>'
-         : (a.running ? '<span class="badge"><span class="run-dot" style="background:hsl(215 16% 62%)"></span>常规实例运行中</span>' : ''))
+         : (a.running ? '<span class="badge"><span class="run-dot" style="background:hsl(var(--subtle))"></span>常规实例运行中</span>' : ''))
       : (a.running ? '<span class="badge warn"><span class="run-dot"></span>运行中</span>' : '');
     const iconImg = a.exists
       ? `<img class="avatar-img" src="/api/app/icon?id=${encodeURIComponent(a.id)}&v=${encodeURIComponent(a.resolved_exe)}&token=${encodeURIComponent(TOKEN)}" alt="" onload="this.parentElement.classList.add('has-icon')" onerror="this.remove()">`
@@ -892,15 +951,18 @@ function renderGrid(){
       <div class="card-meta">
         <span class="${a.exists?'ok':'bad'}">${a.exists?'文件存在':'路径无效'}</span>
         ${runBadge}
-        ${a.kind==='auto'&&(a.detected_kind==='electron'||a.detected_kind==='firefox')?`<span class="ok">自动识别 ${a.evidence.length} 项特征</span>`:''}
+        ${a.kind==='auto'&&a.native_browser?`<span class="ok" title="原生 Chromium 浏览器，使用环境变量与 --proxy-server 双注入">原生 Chromium 浏览器</span>`
+          :a.kind==='auto'&&(a.detected_kind==='electron'||a.detected_kind==='firefox')?`<span class="ok">自动识别 ${a.evidence.length} 项特征</span>`:''}
       </div>
       <div class="card-actions">
         <button class="btn primary" data-act="launch" ${a.exists?'':'disabled title="路径无效，请先编辑修正"'}>启动</button>
-        <button class="btn tiny" data-act="preview" title="预览注入明细">预览</button>
-        <button class="btn tiny" data-act="edit">编辑</button>
-        <button class="btn tiny danger icon" data-act="del" aria-label="删除 ${esc(a.name)}" title="删除">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
-        </button>
+        <div class="card-secondary">
+          <button class="btn tiny" data-act="preview" title="预览注入明细">注入详情</button>
+          <button class="btn tiny" data-act="edit">编辑</button>
+          <button class="btn tiny danger icon" data-act="del" aria-label="删除 ${esc(a.name)}" title="删除">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -910,17 +972,6 @@ function renderGrid(){
 function renderEvents(){
   const body = $('#eventsBody');
   const countEl = $('#eventsCount');
-  if(!STATE.router_enabled){
-    countEl.textContent = '未启用';
-    countEl.className = 'badge';
-    const sig = 'off';
-    if(sig === lastEventsSig) return;
-    lastEventsSig = sig;
-    body.innerHTML = `<div class="events-empty">本地 YAML 分流未启用，请求会直接转给手机 Clash。<br>启用后可在这里看到每个请求的直连 / 走代理判定。
-      <div><button class="btn tiny" id="btnEventsSettings">打开代理设置</button></div></div>`;
-    $('#btnEventsSettings').onclick = openSettings;
-    return;
-  }
   const events = STATE.proxy_events || [];
   const filtered = EVENT_FILTER === 'all' ? events : events.filter(e => (e.action || '').toUpperCase() === EVENT_FILTER);
   countEl.textContent = events.length ? `${filtered.length}/${events.length} 条` : '等待请求';
@@ -954,13 +1005,11 @@ function render(){
   $('#proxyDot').className = 'dot ' + (p.enabled ? (STATE.proxy_online?'on':'off') : '');
   $('#proxyText').textContent = !p.enabled ? '代理注入已关闭'
     : (STATE.proxy_online ? `${STATE.proxy_url} · ${STATE.proxy_latency_ms}ms`
-       : (STATE.router_enabled ? '分流入口未监听 · 请重启 DroidBridge' : '代理未监听 · 请启动手机 Clash'));
+       : '分流入口未监听 · 请重启 DroidBridge');
   $('#proxyEnabled').checked = !!p.enabled;
   $('#proxyUpstream').textContent = STATE.proxy_upstream_url || `${p.host}:${p.port}`;
   $('#proxyLocal').textContent = STATE.proxy_url || '未启动';
-  $('#proxyRouting').textContent = STATE.router_enabled
-    ? (STATE.routing_rules_error ? '规则异常' : '已启用')
-    : '已关闭';
+  $('#proxyRouting').textContent = STATE.routing_rules_error ? '规则异常' : '已启用';
   $('#proxyRouting').title = STATE.routing_rules_file || '';
   const proxyBadge = $('#proxyPanelBadge');
   proxyBadge.textContent = !p.enabled ? '已关闭' : (STATE.proxy_online ? '在线' : '离线');
@@ -991,7 +1040,6 @@ function openEditor(app){
   $('#fExe').value = app ? app.exe : '';
   $('#fArgs').value = app ? (app.args||'') : '';
   $('#fKind').value = app ? (app.kind||'auto') : 'auto';
-  $('#fBypass').value = app ? (app.bypass||[]).join(', ') : '';
   $('#fNote').value = app ? (app.note||'') : '';
   $('#inspectBox').className='inspect';
   $('#inspectBox').textContent='输入路径后自动识别网络栈类型';
@@ -1010,7 +1058,9 @@ async function inspect(){
       box.className='inspect bad'; box.textContent='路径无效或文件不存在：'+r.path; return;
     }
     box.className='inspect good';
-    box.textContent = r.kind==='electron'
+    box.textContent = r.native_browser
+      ? '识别为原生 Chromium 浏览器 → 环境变量 + --proxy-server 双注入'
+      : r.kind==='electron'
       ? `识别为 Electron / Chromium（${r.evidence.length} 项特征）→ 环境变量 + --proxy-server 双注入`
       : r.kind==='firefox'
       ? `识别为 Firefox / Gecko（${r.evidence.length} 项特征）→ 独立配置目录 + user.js 注入（不影响日常 Firefox）`
@@ -1020,8 +1070,7 @@ async function inspect(){
 async function saveEditor(){
   const body={
     id:EDIT_ID, name:$('#fName').value.trim(), exe:$('#fExe').value.trim(),
-    args:$('#fArgs').value.trim(), kind:$('#fKind').value, note:$('#fNote').value.trim(),
-    bypass:$('#fBypass').value
+    args:$('#fArgs').value.trim(), kind:$('#fKind').value, note:$('#fNote').value.trim()
   };
   const label=EDIT_ID?'已更新':'已添加';
   const r=await api(EDIT_ID?'/api/app/update':'/api/app/add',body);
@@ -1106,7 +1155,7 @@ async function removeApp(id){
   if(!r.ok){ toast(r.error||'移除失败',{type:'err'}); log('移除失败: '+(r.error||''),'err'); return; }
   STATE=r.state; render(); log('已移除应用：'+(a?a.name:id),'info');
   if(a){
-    const restore = {id:a.id, name:a.name, exe:a.exe, args:a.args||'', kind:a.kind||'auto', note:a.note||'', bypass:(a.bypass||[]).join(', ')};
+    const restore = {id:a.id, name:a.name, exe:a.exe, args:a.args||'', kind:a.kind||'auto', note:a.note||''};
     toast(`已移除「${a.name}」`, {action:{label:'撤销', fn:async ()=>{
       const rr = await api('/api/app/add', restore);
       if(!rr.ok){ toast(rr.error||'撤销失败',{type:'err'}); return; }
@@ -1119,17 +1168,11 @@ function openSettings(){
   const p=STATE.proxy;
   $('#sHost').value=p.host; $('#sPort').value=p.port;
   $('#sListenPort').value=p.listen_port || 10086;
-  $('#sRouterEnabled').checked=!!STATE.router_enabled;
   $('#sRulesFile').value=p.rules_file || 'rules.yaml';
-  $('#sBypass').value=(p.bypass||[]).join(', ');
   $('#settingsHint').className='inspect';
-  if(STATE.router_enabled){
-    const ruleNote=STATE.routing_rules_error ? ` · ${STATE.routing_rules_error}` : '';
-    $('#settingsHint').textContent=`分流入口 ${STATE.proxy_url} · 上游 ${STATE.proxy_upstream_url} · 入口 ${STATE.proxy_online?'在线':'离线'} · 上游 ${STATE.proxy_upstream_online?'在线':'离线'}${ruleNote}`;
-    if(STATE.routing_rules_error) $('#settingsHint').className='inspect bad';
-  }else{
-    $('#settingsHint').textContent=`当前代理 ${STATE.proxy_url} · ${STATE.proxy_online?'在线':'离线'}`;
-  }
+  const ruleNote=STATE.routing_rules_error ? ` · ${STATE.routing_rules_error}` : '';
+  $('#settingsHint').textContent=`分流入口 ${STATE.proxy_url} · 上游 ${STATE.proxy_upstream_url} · 入口 ${STATE.proxy_online?'在线':'离线'} · 上游 ${STATE.proxy_upstream_online?'在线':'离线'}${ruleNote}`;
+  if(STATE.routing_rules_error) $('#settingsHint').className='inspect bad';
   $('#settings').hidden=false;
   $('#sHost').focus();
 }
@@ -1140,9 +1183,7 @@ async function saveSettings(){
       host:$('#sHost').value.trim(),
       port:rawPort === '' ? '' : Number(rawPort),
       listen_port:Number($('#sListenPort').value),
-      router_enabled:$('#sRouterEnabled').checked,
       rules_file:$('#sRulesFile').value.trim(),
-      bypass:$('#sBypass').value,
       enabled:STATE.proxy.enabled
     }
   };
@@ -1162,6 +1203,7 @@ async function saveSettings(){
 }
 function openAdbSettings(){
   if(!STATE) return;
+  $('#adbPanel').open = true;
   $('#sAdbPath').value=STATE.adb_path || '';
   $('#adbSettings').hidden=false;
   $('#sAdbPath').focus();
@@ -1228,7 +1270,8 @@ $('#btnPickExe').onclick=async ()=>{
 $('#btnSettings').onclick=openSettings;
 $('#btnProxySettings').onclick=openSettings;
 $('#hopEntryBtn').onclick=openSettings;
-$('#hopClashBtn').onclick=()=>{ loadAdbState(); $('#adbPanel').scrollIntoView({behavior:'smooth',block:'nearest'}); };
+$('#mobileChainSummary').onclick=()=>$('#chainPanel').scrollIntoView({behavior:'smooth',block:'start'});
+$('#hopClashBtn').onclick=()=>{ loadAdbState(); $('#adbPanel').open = true; $('#adbPanel').scrollIntoView({behavior:'smooth',block:'nearest'}); };
 $('#btnSettingsCancel').onclick=()=>$('#settings').hidden=true;
 $('#btnSettingsSave').onclick=saveSettings;
 $('#settings').onclick=e=>{ if(e.target.id==='settings') $('#settings').hidden=true; };
@@ -1253,7 +1296,14 @@ $('#btnAdbUnforward').onclick=async ()=>{
   log(`已删除 ADB 转发 ${r.local}`,'ok');
   loadAdbState();
 };
-$('#logPanel').querySelector('.log-head h3').onclick=toggleLog;
+$('#tabEvents').onclick=()=>{
+  applyLogCollapse(true);
+  try{ localStorage.setItem(LOG_COLLAPSE_KEY, '1'); }catch(e){}
+};
+$('#tabLogs').onclick=()=>{
+  applyLogCollapse(false);
+  try{ localStorage.setItem(LOG_COLLAPSE_KEY, '0'); }catch(e){}
+};
 $('#btnClearLog').onclick=()=>{ LOGS=[]; renderLogs(); };
 $('#btnCopyLog').onclick=async ()=>{
   const text = visibleLogs().slice().reverse().map(l => `[${l.t}] ${l.msg}`).join('\n');
@@ -1336,8 +1386,11 @@ document.addEventListener('keydown',e=>{
 window.addEventListener('beforeunload',()=>{
   try{ navigator.sendBeacon('/api/quit?token='+encodeURIComponent(TOKEN),''); }catch(e){}
 });
-let logCollapsed = false;
-try{ logCollapsed = localStorage.getItem(LOG_COLLAPSE_KEY) === '1'; }catch(e){}
+let logCollapsed = true;
+try{
+  const savedLogPreference = localStorage.getItem(LOG_COLLAPSE_KEY);
+  logCollapsed = savedLogPreference === null ? true : savedLogPreference === '1';
+}catch(e){}
 applyLogCollapse(logCollapsed);
 renderLogs();
 log('DroidBridge 已就绪','ok');

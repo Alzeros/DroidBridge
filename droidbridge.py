@@ -6,10 +6,10 @@ Only child processes launched from here inherit the proxy environment.
 No TUN, no system proxy, no setx, no registry. Stdlib only.
 
 Layers:
-  Node / generic apps  -> HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY
-  Electron / Chromium -> --proxy-server, --proxy-bypass-list (they ignore
-                         *_PROXY env vars on Windows)
+  Node / generic apps  -> HTTP_PROXY, HTTPS_PROXY, ALL_PROXY
+  Electron / Chromium -> --proxy-server (they ignore *_PROXY env vars on Windows)
   Firefox / Gecko     -> isolated -no-remote -profile + user.js prefs
+  All proxied traffic -> local router on 127.0.0.1:10086 -> rules.yaml
 """
 from __future__ import annotations
 
@@ -57,10 +57,8 @@ DEFAULT_CONFIG = {
         "port": 5038,
         "listen_host": "127.0.0.1",
         "listen_port": 10086,
-        "router_enabled": True,
         "rules_file": "rules.yaml",
         "enabled": True,
-        "bypass": ["localhost", "127.0.0.1", "::1"],
     },
     "apps": [
         {
@@ -108,6 +106,8 @@ FIREFOX_STEMS = {
     "seamonkey",
 }
 
+NATIVE_BROWSER_STEMS = {"chrome", "msedge", "chromium", "brave", "vivaldi"}
+
 BROWSERS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -144,10 +144,21 @@ def load_config():
             return cfg
         with CONFIG_PATH.open("r", encoding="utf-8") as f:
             cfg = json.load(f)
+        removed_legacy = False
+        for legacy_key in ("router_enabled", "bypass"):
+            if legacy_key in cfg.get("proxy", {}):
+                cfg["proxy"].pop(legacy_key, None)
+                removed_legacy = True
+        for app in cfg.get("apps", []):
+            if "bypass" in app:
+                app.pop("bypass", None)
+                removed_legacy = True
         for key, val in DEFAULT_CONFIG.items():
             cfg.setdefault(key, json.loads(json.dumps(val)))
         for key, val in DEFAULT_CONFIG["proxy"].items():
             cfg["proxy"].setdefault(key, val)
+        if removed_legacy:
+            save_config(cfg)
         ensure_rules_file(cfg)
         return cfg
 
@@ -174,15 +185,6 @@ def ensure_rules_file(cfg):
         path.write_text(RULES_EXAMPLE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
     except OSError:
         pass
-
-
-def parse_bypass(value):
-    if isinstance(value, str):
-        value = value.replace("\n", ",").split(",")
-    if not isinstance(value, list):
-        raise ValueError("直连例外格式错误")
-    entries = [str(entry).strip() for entry in value]
-    return [entry for entry in entries if entry]
 
 
 def _strip_yaml_comment(text):
@@ -432,7 +434,7 @@ def detect_kind(exe: str):
     folder = Path(exe).parent
     elec_found = [m for m in ELECTRON_MARKERS if (folder / m).exists()]
     stem = Path(exe).stem.lower()
-    if stem in ("chrome", "msedge", "chromium", "brave", "vivaldi"):
+    if stem in NATIVE_BROWSER_STEMS:
         return "electron", ["browser binary"] + elec_found
     if len(elec_found) >= 2:
         return "electron", elec_found
@@ -444,6 +446,11 @@ def detect_kind(exe: str):
         return "firefox", ff_found
 
     return "generic", elec_found
+
+
+def is_native_browser(exe: str) -> bool:
+    """True for a standalone Chromium browser binary, not an Electron app."""
+    return Path(exe).stem.lower() in NATIVE_BROWSER_STEMS
 
 
 def effective_kind(app):
@@ -661,19 +668,12 @@ def split_args(text: str):
 
 def proxy_url(cfg):
     p = cfg["proxy"]
-    if p.get("router_enabled", False):
-        return "http://%s:%s" % (p.get("listen_host", "127.0.0.1"), p.get("listen_port", 10086))
-    return "http://%s:%s" % (p["host"], p["port"])
+    return "http://%s:%s" % (p.get("listen_host", "127.0.0.1"), p.get("listen_port", 10086))
 
 
 def upstream_url(cfg):
     p = cfg["proxy"]
     return "http://%s:%s" % (p["host"], p["port"])
-
-
-def effective_bypass(cfg):
-    # When the local router is active, its YAML rules must see every request.
-    return [] if cfg["proxy"].get("router_enabled", False) else cfg["proxy"].get("bypass", [])
 
 
 def build_env(cfg):
@@ -685,7 +685,8 @@ def build_env(cfg):
         "HTTP_PROXY": url,
         "HTTPS_PROXY": url,
         "ALL_PROXY": url,
-        "NO_PROXY": ",".join(effective_bypass(cfg)),
+        # Clear inherited exceptions so every request reaches rules.yaml.
+        "NO_PROXY": "",
     }
     env.update(delta)
     return env, delta
@@ -693,14 +694,7 @@ def build_env(cfg):
 
 def proxy_probe_target(cfg):
     p = cfg["proxy"]
-    if p.get("router_enabled", False):
-        return p.get("listen_host", "127.0.0.1"), p.get("listen_port", 10086)
-    return p["host"], p["port"]
-
-
-# Chromium bypasses loopback implicitly; listing "::1" there needs bracket
-# syntax and can break rule parsing. Keep "<local>" so intranet short names pass through.
-CHROMIUM_LOOPBACK = {"localhost", "127.0.0.1", "::1", "[::1]"}
+    return p.get("listen_host", "127.0.0.1"), p.get("listen_port", 10086)
 
 
 def firefox_profile_dir(app) -> Path:
@@ -738,22 +732,6 @@ def is_firefox_profile_locked(profile_dir: Path) -> bool:
     return err in (ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION, ERROR_ACCESS_DENIED)
 
 
-def _firefox_bypass_list(bypass) -> str:
-    seen = set()
-    out = []
-    for raw in (bypass or []):
-        item = str(raw).strip()
-        if not item or item.lower() == "<local>":
-            continue
-        if item.startswith("*.") and len(item) > 2:
-            item = "." + item[2:]
-        key = item.lower()
-        if key not in seen:
-            seen.add(key)
-            out.append(item)
-    return ", ".join(out)
-
-
 def build_firefox_user_js(cfg) -> tuple[str, str]:
     p = cfg["proxy"]
     if not p.get("enabled", True):
@@ -763,12 +741,8 @@ def build_firefox_user_js(cfg) -> tuple[str, str]:
         )
         return text, "type=0 (直连，代理注入已关闭)"
 
-    proxy_host, proxy_port = p["host"], p["port"]
-    if p.get("router_enabled", False):
-        proxy_host, proxy_port = p.get("listen_host", "127.0.0.1"), p.get("listen_port", 10086)
-    host = str(proxy_host).strip()
-    port = int(proxy_port)
-    no_proxy = _firefox_bypass_list(effective_bypass(cfg))
+    host = str(p.get("listen_host", "127.0.0.1")).strip()
+    port = int(p.get("listen_port", 10086))
     lines = [
         "// Generated by DroidBridge - updated on each launch",
         'user_pref("network.proxy.type", 1);',
@@ -779,10 +753,10 @@ def build_firefox_user_js(cfg) -> tuple[str, str]:
         'user_pref("network.proxy.share_proxy_settings", true);',
         'user_pref("network.proxy.socks", "");',
         'user_pref("network.proxy.socks_port", 0);',
-        f'user_pref("network.proxy.no_proxies_on", {json.dumps(no_proxy)});',
+        'user_pref("network.proxy.no_proxies_on", "");',
         'user_pref("network.proxy.allow_hijacking_localhost", false);',
     ]
-    summary = f"type=1 (manual) | http/ssl={host}:{port} | no_proxies_on={no_proxy or '(none)'}"
+    summary = f"type=1 (manual) | http/ssl={host}:{port}"
     return "\n".join(lines) + "\n", summary
 
 
@@ -804,12 +778,6 @@ def build_cmd(app, cfg):
         if "--proxy-server" not in flags:
             cmd.append("--proxy-server=" + url)
             injected.append("--proxy-server")
-        if "--proxy-bypass-list" not in flags:
-            rules = [x.strip() for x in effective_bypass(cfg)
-                     if x.strip().lower() not in CHROMIUM_LOOPBACK]
-            if rules:
-                cmd.append("--proxy-bypass-list=" + ";".join(rules))
-                injected.append("--proxy-bypass-list")
     elif kind == "firefox":
         user_args = cmd[1:]
         lower_args = [a.lower() for a in user_args]
@@ -835,20 +803,12 @@ def launch_app(app, cfg, dry_run=False, force=False):
     online, latency = probe_proxy(*proxy_probe_target(cfg))
     if p.get("enabled", True) and not online:
         target_host, target_port = proxy_probe_target(cfg)
-        reason = (
-            "本地分流入口 %s:%s 未启动"
-            if p.get("router_enabled", False)
-            else "代理 %s:%s 未监听，请先启动手机 Clash"
-        ) % (target_host, target_port)
+        reason = "本地分流入口 %s:%s 未启动" % (target_host, target_port)
         result.update(
             ok=False,
             error=reason,
         )
         return result
-
-    if app.get("bypass"):
-        bypass = list(dict.fromkeys([*p.get("bypass", []), *app["bypass"]]))
-        cfg = {**cfg, "proxy": {**p, "bypass": bypass}}
 
     cmd, kind, injected = build_cmd(app, cfg)
     env, delta = build_env(cfg)
@@ -922,8 +882,8 @@ def make_state():
     cfg = load_config()
     p = cfg["proxy"]
     online, latency = probe_proxy(*proxy_probe_target(cfg))
-    route_table = RouteTable.load(cfg) if p.get("router_enabled", False) else None
-    upstream_target = route_table.upstream if route_table and not route_table.error else (p["host"], p["port"])
+    route_table = RouteTable.load(cfg)
+    upstream_target = route_table.upstream if not route_table.error else (p["host"], p["port"])
     upstream_online, upstream_latency = probe_proxy(*upstream_target)
     apps = []
     for app in cfg["apps"]:
@@ -941,6 +901,7 @@ def make_state():
             "exists": Path(exe).is_file(),
             "detected_kind": kind,
             "effective_kind": eff_kind,
+            "native_browser": is_native_browser(exe),
             "evidence": evidence,
             "running": bool(running_lines(exe)),
             "profile_running": profile_running,
@@ -950,7 +911,6 @@ def make_state():
         "adb_path": str(cfg.get("adb_path") or ""),
         "proxy_url": proxy_url(cfg),
         "proxy_upstream_url": "http://%s:%s" % upstream_target,
-        "router_enabled": bool(p.get("router_enabled", False)),
         "router_listen": "%s:%s" % (p.get("listen_host", "127.0.0.1"), p.get("listen_port", 10086)),
         "routing_rules_file": str(route_table.source) if route_table else "",
         "routing_rules_error": "; ".join(x for x in [route_table.error if route_table else "", _proxy_error] if x),
@@ -1695,9 +1655,6 @@ class ProxyServer(ThreadingHTTPServer):
 def start_proxy_server(cfg):
     global _proxy_server, _proxy_thread, _proxy_error
     p = cfg.get("proxy", {})
-    if not p.get("router_enabled", False):
-        _proxy_error = ""
-        return
     host = str(p.get("listen_host") or "127.0.0.1").strip()
     if host not in {"127.0.0.1", "localhost"}:
         _proxy_error = "分流服务只能监听本机地址"
@@ -2021,6 +1978,7 @@ class Handler(BaseHTTPRequestHandler):
                     "path": exe,
                     "exists": Path(exe).is_file(),
                     "kind": kind,
+                    "native_browser": is_native_browser(exe),
                     "evidence": evidence,
                 })
                 return
@@ -2144,14 +2102,6 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 new_rules_file = incoming["rules_file"].strip()
 
-            new_bypass = None
-            if "bypass" in incoming:
-                try:
-                    new_bypass = parse_bypass(incoming["bypass"])
-                except ValueError as exc:
-                    self.send_json({"ok": False, "error": str(exc)}, 400)
-                    return
-
             restart_router = False
             with _config_lock:
                 cfg = load_config()
@@ -2166,15 +2116,11 @@ class Handler(BaseHTTPRequestHandler):
                     cfg["proxy"]["rules_file"] = new_rules_file
                 if "enabled" in incoming:
                     cfg["proxy"]["enabled"] = bool(incoming["enabled"])
-                if "router_enabled" in incoming:
-                    cfg["proxy"]["router_enabled"] = bool(incoming["router_enabled"])
-                if new_bypass is not None:
-                    cfg["proxy"]["bypass"] = new_bypass
                 if new_adb_path is not None:
                     cfg["adb_path"] = new_adb_path
                 save_config(cfg)
-                router_keys = ("router_enabled", "listen_host", "listen_port", "rules_file", "host", "port")
-                restart_router = any(previous_proxy.get(key) != cfg["proxy"].get(key) for key in router_keys)
+                restart_keys = ("listen_host", "listen_port", "rules_file", "host", "port")
+                restart_router = any(previous_proxy.get(key) != cfg["proxy"].get(key) for key in restart_keys)
             if restart_router:
                 restart_proxy_server(load_config())
             self.send_json({"ok": True, "state": make_state()})
@@ -2195,12 +2141,6 @@ class Handler(BaseHTTPRequestHandler):
             if not item["exe"]:
                 self.send_json({"ok": False, "error": "可执行文件路径不能为空"}, 400)
                 return
-            if "bypass" in body:
-                try:
-                    item["bypass"] = parse_bypass(body["bypass"])
-                except ValueError as exc:
-                    self.send_json({"ok": False, "error": str(exc)}, 400)
-                    return
             with _config_lock:
                 cfg = load_config()
                 if path == "/api/app/update":

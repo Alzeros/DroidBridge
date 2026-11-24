@@ -65,7 +65,6 @@ class RoutingTests(unittest.TestCase):
             "proxy": {
                 "host": "127.0.0.1",
                 "port": self.upstream.server_address[1],
-                "router_enabled": True,
                 "rules_file": str(self.rules_path),
             },
             "apps": [],
@@ -193,6 +192,80 @@ class RoutingTests(unittest.TestCase):
         ]:
             with self.subTest(host=host):
                 self.assertEqual(table.action_for(host), expected)
+
+
+class SingleRouteInjectionTests(unittest.TestCase):
+    def config(self):
+        return {
+            "proxy": {
+                "host": "127.0.0.1",
+                "port": 5038,
+                "listen_host": "127.0.0.1",
+                "listen_port": 10086,
+                "rules_file": "rules.yaml",
+                "enabled": True,
+            },
+            "apps": [],
+        }
+
+    def test_all_injection_targets_use_local_router(self):
+        cfg = self.config()
+        cfg["proxy"]["router_enabled"] = False
+        cfg["proxy"]["bypass"] = ["localhost", "*.corp.example"]
+
+        self.assertEqual(droidbridge.proxy_url(cfg), "http://127.0.0.1:10086")
+        self.assertEqual(droidbridge.proxy_probe_target(cfg), ("127.0.0.1", 10086))
+
+        _, env = droidbridge.build_env(cfg)
+        self.assertEqual(env["HTTP_PROXY"], "http://127.0.0.1:10086")
+        self.assertEqual(env["HTTPS_PROXY"], "http://127.0.0.1:10086")
+        self.assertEqual(env["ALL_PROXY"], "http://127.0.0.1:10086")
+        self.assertEqual(env["NO_PROXY"], "")
+
+        app = {"exe": r"C:\Apps\Chat\Chat.exe", "args": "", "kind": "electron"}
+        cmd, kind, injected = droidbridge.build_cmd(app, cfg)
+        self.assertEqual(kind, "electron")
+        self.assertIn("--proxy-server=http://127.0.0.1:10086", cmd)
+        self.assertIn("--proxy-server", injected)
+        self.assertFalse(any(arg.startswith("--proxy-bypass-list") for arg in cmd))
+
+    def test_firefox_prefs_have_no_second_exception_path(self):
+        text, summary = droidbridge.build_firefox_user_js(self.config())
+        self.assertIn('user_pref("network.proxy.http", "127.0.0.1");', text)
+        self.assertIn('user_pref("network.proxy.http_port", 10086);', text)
+        self.assertIn('user_pref("network.proxy.no_proxies_on", "");', text)
+        self.assertIn("http/ssl=127.0.0.1:10086", summary)
+
+    def test_legacy_config_fields_are_removed_on_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "config.json"
+            config_path.write_text(json.dumps({
+                "proxy": {
+                    "host": "127.0.0.1",
+                    "port": 5038,
+                    "listen_host": "127.0.0.1",
+                    "listen_port": 10086,
+                    "rules_file": str(Path(directory) / "rules.yaml"),
+                    "router_enabled": False,
+                    "bypass": ["localhost", "*.corp.example"],
+                },
+                "apps": [{
+                    "id": "legacy",
+                    "name": "Legacy",
+                    "exe": r"C:\Apps\Legacy.exe",
+                    "bypass": ["internal.example"],
+                }],
+            }), encoding="utf-8")
+            with patch.object(droidbridge, "CONFIG_PATH", config_path):
+                cfg = droidbridge.load_config()
+
+            self.assertNotIn("router_enabled", cfg["proxy"])
+            self.assertNotIn("bypass", cfg["proxy"])
+            self.assertNotIn("bypass", cfg["apps"][0])
+            persisted = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertNotIn("router_enabled", persisted["proxy"])
+            self.assertNotIn("bypass", persisted["proxy"])
+            self.assertNotIn("bypass", persisted["apps"][0])
 
 
 if __name__ == "__main__":

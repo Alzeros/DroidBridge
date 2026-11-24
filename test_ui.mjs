@@ -24,14 +24,12 @@ const state = {
     port: 5038,
     listen_port: 10086,
     rules_file: 'rules.yaml',
-    bypass: ['localhost', '127.0.0.1'],
   },
   proxy_online: true,
   proxy_url: 'http://127.0.0.1:10086',
   proxy_latency_ms: 12,
   proxy_upstream_online: true,
   proxy_upstream_url: 'http://127.0.0.1:5038',
-  router_enabled: true,
   routing_rules_error: '',
   routing_rules_file: 'rules.yaml',
   proxy_upstream_latency_ms: 8,
@@ -53,7 +51,6 @@ const state = {
     running: false,
     profile_running: false,
     note: '用于界面布局验证',
-    bypass: [],
     detected_kind: 'electron',
     evidence: ['package.json'],
   }, {
@@ -68,7 +65,6 @@ const state = {
     running: false,
     profile_running: false,
     note: '',
-    bypass: [],
     detected_kind: 'electron',
     evidence: ['package.json'],
   }],
@@ -135,7 +131,6 @@ async function startServer() {
           kind: parsed.kind || 'auto',
           effective_kind: parsed.kind === 'auto' ? 'generic' : (parsed.kind || 'generic'),
           note: parsed.note || '',
-          bypass: [],
           exists: true,
           resolved_exe: parsed.exe || '',
           running: false,
@@ -289,13 +284,26 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
     assert.equal(aligned, true);
   });
 
-  await t.test('keeps secondary card actions on one row', async () => {
-    const sameRow = await browser.evaluate(`(() => {
+  await t.test('keeps secondary card actions quiet and on one row', async () => {
+    const secondary = await browser.evaluate(`(() => {
       const preview = document.querySelector('.card [data-act="preview"]');
       const remove = document.querySelector('.card [data-act="del"]');
-      return Math.abs(preview.getBoundingClientRect().top - remove.getBoundingClientRect().top) < 1;
+      const row = preview.closest('.card-secondary').getBoundingClientRect();
+      const previewRect = preview.getBoundingClientRect();
+      const removeRect = remove.getBoundingClientRect();
+      return {
+        sameRow: Math.abs(previewRect.top - removeRect.top) < 1,
+        previewLabel: preview.textContent.trim(),
+        deleteWidth: removeRect.width,
+        deleteHeight: removeRect.height,
+        deleteRightGap: row.right - removeRect.right,
+      };
     })()`);
-    assert.equal(sameRow, true);
+    assert.equal(secondary.sameRow, true);
+    assert.equal(secondary.previewLabel, '注入详情');
+    assert.ok(secondary.deleteWidth >= 32, `delete target width: ${secondary.deleteWidth}px`);
+    assert.ok(secondary.deleteHeight >= 32, `delete target height: ${secondary.deleteHeight}px`);
+    assert.ok(secondary.deleteRightGap < 2, `delete action is not right-aligned: ${secondary.deleteRightGap}px`);
   });
 
   await t.test('owns the adb path field inside the ADB panel', async () => {
@@ -303,34 +311,42 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
     assert.equal(await browser.evaluate("!!document.querySelector('#settings #sAdbPath')"), false);
   });
 
-  await t.test('aligns the proxy settings switch with its label', async () => {
+  await t.test('keeps connection details inside one collapsed status panel', async () => {
+    const rail = await browser.evaluate(`(() => ({
+      panels: document.querySelectorAll('#statusRail > .panel').length,
+      adbIsDetails: document.querySelector('#adbPanel')?.tagName,
+      proxyIsDetails: document.querySelector('#proxyPanel')?.tagName,
+      adbOpen: document.querySelector('#adbPanel')?.open,
+      proxyOpen: document.querySelector('#proxyPanel')?.open,
+      adbBadge: document.querySelector('#adbSummaryBadge')?.textContent,
+      proxyBadge: document.querySelector('#proxyPanelBadge')?.textContent,
+    }))()`);
+    assert.equal(rail.panels, 1);
+    assert.equal(rail.adbIsDetails, 'DETAILS');
+    assert.equal(rail.proxyIsDetails, 'DETAILS');
+    assert.equal(rail.adbOpen, false);
+    assert.equal(rail.proxyOpen, false);
+    assert.equal(rail.adbBadge, '已连接');
+    assert.equal(rail.proxyBadge, '在线');
+  });
+
+  await t.test('uses rules.yaml as the only routing source', async () => {
     await browser.evaluate("document.querySelector('#btnSettings').click()");
     await browser.waitFor("document.querySelector('#settings').hidden === false");
-    const layout = await browser.evaluate(`(() => {
-      const label = document.querySelector('#settings label.switch');
-      const input = label.querySelector('input');
-      const text = label.querySelector('span');
-      const labelStyle = getComputedStyle(label);
-      const inputStyle = getComputedStyle(input);
-      const inputRect = input.getBoundingClientRect();
-      const textRect = text.getBoundingClientRect();
-      return {
-        display: labelStyle.display,
-        alignItems: labelStyle.alignItems,
-        width: inputStyle.width,
-        height: inputStyle.height,
-        marginTop: inputStyle.marginTop,
-        padding: inputStyle.padding,
-        centerDelta: Math.abs((inputRect.top + inputRect.height / 2) - (textRect.top + textRect.height / 2)),
-      };
-    })()`);
-    assert.equal(layout.display, 'flex');
-    assert.equal(layout.alignItems, 'center');
-    assert.equal(layout.width, '16px');
-    assert.equal(layout.height, '16px');
-    assert.equal(layout.marginTop, '0px');
-    assert.equal(layout.padding, '0px');
-    assert.ok(layout.centerDelta < 1, `checkbox and label centers differ by ${layout.centerDelta}px`);
+    const settings = await browser.evaluate(`(() => ({
+      rulesFile: document.querySelector('#sRulesFile').value,
+      help: document.querySelector('#settings .field-help').textContent.trim(),
+      hasRouterToggle: !!document.querySelector('#sRouterEnabled'),
+      hasGlobalBypass: !!document.querySelector('#sBypass'),
+      hasAppBypass: !!document.querySelector('#fBypass'),
+      hint: document.querySelector('#settingsHint').textContent,
+    }))()`);
+    assert.equal(settings.rulesFile, 'rules.yaml');
+    assert.match(settings.help, /所有代理请求统一进入分流入口/);
+    assert.equal(settings.hasRouterToggle, false);
+    assert.equal(settings.hasGlobalBypass, false);
+    assert.equal(settings.hasAppBypass, false);
+    assert.match(settings.hint, /127\.0\.0\.1:10086/);
     if (process.env.DROIDBRIDGE_UI_SCREENSHOT) {
       const screenshot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SCREENSHOT, Buffer.from(screenshot.data, 'base64'));
@@ -351,9 +367,13 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
     }
     assert.ok(saved, 'proxy settings request was sent');
     assert.equal(Object.hasOwn(saved.body, 'adb_path'), false);
+    assert.deepEqual(Object.keys(saved.body.proxy).sort(), [
+      'enabled', 'host', 'listen_port', 'port', 'rules_file',
+    ]);
   });
 
   await t.test('saves adb path independently from the ADB panel', async () => {
+    await browser.evaluate("document.querySelector('#adbPanel').open = true");
     await browser.evaluate("document.querySelector('#btnAdbSettings').click()");
     await browser.waitFor("document.querySelector('#adbSettings').hidden === false");
     await browser.evaluate(`document.querySelector('#sAdbPath').value = ${JSON.stringify('D:\\tools\\adb.exe')}`);
@@ -402,6 +422,67 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(chain.clash, '8ms');
     assert.equal(chain.badge, '畅通');
     assert.equal(chain.entryFlow, true);
+  });
+
+  await t.test('labels native Chromium browsers without a marker count', async () => {
+    const nativeBrowser = await browser.evaluate(`(() => {
+      const app = {
+        ...STATE.apps[0],
+        id: 'chrome-preview',
+        name: 'Chrome',
+        kind: 'auto',
+        detected_kind: 'electron',
+        effective_kind: 'electron',
+        native_browser: true,
+        evidence: ['browser binary'],
+      };
+      STATE.apps.push(app);
+      renderGrid();
+      const card = document.querySelector('.card[data-id="chrome-preview"]');
+      const meta = card.querySelector('.card-meta').textContent.replace(/\\s+/g, ' ').trim();
+      STATE.apps = STATE.apps.filter((item) => item.id !== 'chrome-preview');
+      renderGrid();
+      return { meta, count: document.querySelectorAll('#appGrid .card').length };
+    })()`);
+    assert.match(nativeBrowser.meta, /原生 Chromium 浏览器/);
+    assert.doesNotMatch(nativeBrowser.meta, /项特征/);
+    assert.equal(nativeBrowser.count, 2);
+  });
+
+  await t.test('defaults to routing and reveals logs through the diagnostic tabs', async () => {
+    const initial = await browser.evaluate(`(() => ({
+      eventsTabActive: document.querySelector('#tabEvents').classList.contains('active'),
+      eventsVisible: !document.querySelector('#eventsBody').hidden,
+      logsHidden: document.querySelector('#logPanel').hidden,
+      eventToolsVisible: !document.querySelector('#eventChips').hidden,
+      logToolsHidden: document.querySelector('#logTools').hidden,
+    }))()`);
+    assert.deepEqual(initial, {
+      eventsTabActive: true,
+      eventsVisible: true,
+      logsHidden: true,
+      eventToolsVisible: true,
+      logToolsHidden: true,
+    });
+
+    await browser.evaluate("document.querySelector('#tabLogs').click()");
+    const logs = await browser.evaluate(`(() => ({
+      logsVisible: !document.querySelector('#logPanel').hidden,
+      eventsHidden: document.querySelector('#eventsBody').hidden,
+      eventToolsHidden: document.querySelector('#eventChips').hidden,
+      logToolsVisible: !document.querySelector('#logTools').hidden,
+      selected: document.querySelector('#tabLogs').getAttribute('aria-selected'),
+    }))()`);
+    assert.deepEqual(logs, {
+      logsVisible: true,
+      eventsHidden: true,
+      eventToolsHidden: true,
+      logToolsVisible: true,
+      selected: 'true',
+    });
+
+    await browser.evaluate("document.querySelector('#tabEvents').click()");
+    assert.equal(await browser.evaluate("document.querySelector('#logPanel').hidden"), true);
   });
 
   await t.test('draws the latency sparkline from samples', async () => {
@@ -468,9 +549,15 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.waitFor("document.querySelectorAll('#appGrid .card').length === 2");
   });
 
-  await t.test('escape closes the editor', async () => {
+  await t.test('editor only edits application launch settings and escape closes it', async () => {
     await browser.evaluate("document.querySelector('#btnAdd').click()");
     await browser.waitFor("document.querySelector('#editor').hidden === false");
+    const editor = await browser.evaluate(`(() => ({
+      hasAppBypass: !!document.querySelector('#fBypass'),
+      fields: [...document.querySelectorAll('#editor input, #editor select')].map((el) => el.id),
+    }))()`);
+    assert.equal(editor.hasAppBypass, false);
+    assert.deepEqual(editor.fields, ['fName', 'fExe', 'fArgs', 'fKind', 'fNote']);
     await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
     assert.equal(await browser.evaluate("document.querySelector('#editor').hidden"), true);
   });
@@ -498,6 +585,11 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       chainVisible: !!document.querySelector('#chainPanel').offsetHeight,
       addVisible: !!document.querySelector('#btnAdd').offsetHeight,
       toggleVisible: !!document.querySelector('#proxyEnabled').offsetHeight,
+      summaryVisible: !!document.querySelector('#mobileChainSummary').offsetHeight,
+      summaryText: document.querySelector('#mobileChainText').textContent,
+      summaryMeta: document.querySelector('#mobileChainMeta').textContent,
+      summaryBeforeApps: document.querySelector('#mobileChainSummary').getBoundingClientRect().top < document.querySelector('#appsTitle').getBoundingClientRect().top,
+      settingsSize: (() => { const r = document.querySelector('#btnSettings').getBoundingClientRect(); return { width: r.width, height: r.height }; })(),
       railBelow: document.querySelector('#statusRail').getBoundingClientRect().top > document.querySelector('#appGrid').getBoundingClientRect().bottom - 1,
       singleColCards: (() => { const c = [...document.querySelectorAll('#appGrid .card')]; return c.length < 2 || Math.abs(c[0].getBoundingClientRect().top - c[1].getBoundingClientRect().top) > 1; })(),
     }))()`);
@@ -508,6 +600,25 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(layout.chainVisible, true);
     assert.equal(layout.addVisible, true);
     assert.equal(layout.toggleVisible, true);
+    assert.equal(layout.summaryVisible, true);
+    assert.equal(layout.summaryText, '链路畅通');
+    assert.match(layout.summaryMeta, /入口 12ms · Clash 8ms/);
+    assert.equal(layout.summaryBeforeApps, true);
+    assert.ok(layout.settingsSize.width > 40, `settings button is too narrow: ${layout.settingsSize.width}px`);
+    assert.ok(layout.settingsSize.height < 45, `settings label wrapped: ${layout.settingsSize.height}px`);
+
+    await browser.evaluate("document.querySelector('#adbPanel').open = true; document.querySelector('#proxyPanel').open = true");
+    const expanded = await browser.evaluate(`(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+      adbVisible: !!document.querySelector('#adbPath').offsetHeight,
+      proxyVisible: !!document.querySelector('#proxyRouting').offsetHeight,
+      forwardVisible: !!document.querySelector('#btnAdbForward').offsetHeight,
+    }))()`);
+    assert.ok(expanded.scrollWidth <= expanded.innerWidth + 1, `expanded details overflow: ${expanded.scrollWidth} > ${expanded.innerWidth}`);
+    assert.equal(expanded.adbVisible, true);
+    assert.equal(expanded.proxyVisible, true);
+    assert.equal(expanded.forwardVisible, true);
     if (process.env.DROIDBRIDGE_UI_SHOT_MOBILE) {
       const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_MOBILE, Buffer.from(shot.data, 'base64'));

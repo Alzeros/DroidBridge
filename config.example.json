@@ -4,14 +4,8 @@
     "port": 5038,
     "listen_host": "127.0.0.1",
     "listen_port": 10086,
-    "router_enabled": true,
     "rules_file": "rules.yaml",
-    "enabled": true,
-    "bypass": [
-      "localhost",
-      "127.0.0.1",
-      "::1"
-    ]
+    "enabled": true
   },
   "apps": [
     {
