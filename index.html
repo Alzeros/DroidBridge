@@ -457,17 +457,72 @@
     background:hsl(var(--surface-soft));color:hsl(var(--text));font:13px ui-monospace,Consolas,monospace;outline:none;
   }
   .tester-row input:focus{border-color:hsl(var(--primary))}
-  .rules-editor-panel{display:flex;flex-direction:column;flex:1;min-height:280px}
+  .rules-editor-panel{display:flex;flex-direction:column;flex:1;min-height:300px}
   .editor-bar{
-    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;flex:none;
-    padding:10px 16px;border-bottom:1px solid hsl(var(--line));background:hsl(var(--surface-soft));font-size:12px;font-weight:600;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;flex:none;
+    padding:8px 14px;border-bottom:1px solid hsl(var(--line));background:hsl(var(--surface-soft));font-size:12px;
   }
-  .syntax-hint{font-weight:400;color:hsl(var(--muted));font-size:11.5px}
+  .editor-bar-left,.editor-bar-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+  .editor-filename{font-weight:650;color:hsl(var(--text));font-family:ui-monospace,Consolas,"Cascadia Code",monospace}
+  .editor-tpl-btn{
+    border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--muted));
+    padding:2px 8px;border-radius:7px;font-size:11.5px;line-height:1.5;white-space:nowrap;
+    transition:border-color var(--transition),background var(--transition),color var(--transition);
+  }
+  .editor-tpl-btn:hover{border-color:hsl(var(--primary) / .38);background:hsl(var(--primary-soft));color:hsl(var(--primary-hover))}
+  .code-editor-shell{
+    position:relative;flex:1;min-height:240px;display:grid;grid-template-columns:auto minmax(0,1fr);
+    background:hsl(var(--surface));overflow:hidden;
+  }
+  .code-gutter{
+    min-width:46px;padding:12px 0;border-right:1px solid hsl(var(--line));background:hsl(var(--surface-soft));
+    overflow:hidden;user-select:none;text-align:right;
+    font:400 12px/22px ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--subtle));
+  }
+  .gutter-num{
+    height:22px;line-height:22px;padding:0 10px 0 8px;cursor:pointer;font-variant-numeric:tabular-nums;
+    transition:color var(--transition),background var(--transition);
+  }
+  .gutter-num:hover{color:hsl(var(--text));background:hsl(220 20% 92% / .6)}
+  .gutter-num.is-active{color:hsl(var(--primary));font-weight:600;background:hsl(var(--primary-soft) / .85)}
+  .gutter-num.is-match{color:hsl(var(--green));font-weight:600;background:hsl(var(--green-soft))}
+  .gutter-num.is-error{color:hsl(var(--red));font-weight:600;background:hsl(var(--red-soft))}
+  .code-canvas{position:relative;min-width:0;min-height:0;overflow:hidden}
+  .code-highlight,.rules-editor-area{
+    position:absolute;inset:0;width:100%;height:100%;margin:0;border:0;padding:12px 16px;
+    font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:13px;font-weight:400;font-style:normal;
+    line-height:22px;letter-spacing:0;tab-size:2;white-space:pre;word-wrap:normal;
+  }
+  .code-highlight{
+    z-index:1;pointer-events:none;overflow:hidden;background:hsl(var(--surface));color:hsl(var(--text));
+  }
+  .code-line{height:22px;min-height:22px;line-height:22px;min-width:100%;width:max-content}
+  .code-line.is-active{background:hsl(221 90% 97% / .75);box-shadow:-16px 0 0 hsl(221 90% 97% / .75),16px 0 0 hsl(221 90% 97% / .75)}
+  .code-line.is-match{background:hsl(var(--green-soft));box-shadow:-16px 0 0 hsl(var(--green-soft)),16px 0 0 hsl(var(--green-soft))}
+  .code-line.is-error{background:hsl(var(--red-soft));box-shadow:-16px 0 0 hsl(var(--red-soft)),16px 0 0 hsl(var(--red-soft))}
+  .tok-comment{color:hsl(215 14% 55%)}
+  .tok-key{color:hsl(221 76% 45%)}
+  .tok-punct{color:hsl(215 16% 52%)}
+  .tok-kind{color:hsl(262 62% 46%)}
+  .tok-target{color:hsl(222 44% 14%)}
+  .tok-direct{color:hsl(172 78% 28%)}
+  .tok-proxy{color:hsl(221 78% 46%)}
+  .tok-val{color:hsl(28 72% 38%)}
+  .tok-bad{color:hsl(var(--red))}
   .rules-editor-area{
-    flex:1;min-height:220px;width:100%;border:0;padding:14px 16px;background:hsl(var(--surface));
-    color:hsl(var(--text));font:13px/1.68 ui-monospace,Consolas,"Cascadia Code",monospace;resize:none;outline:none;
+    z-index:2;background:transparent;color:transparent;caret-color:hsl(var(--text));
+    overflow:auto;resize:none;outline:none;
   }
-  .rules-error-wrap{padding:0 16px 14px;flex:none}
+  .rules-editor-area::selection{background:hsl(var(--primary) / .22);color:transparent}
+  .rules-editor-area:focus-visible{outline:none}
+  .code-editor-shell:focus-within{box-shadow:inset 0 0 0 2px hsl(var(--primary) / .2)}
+  .editor-status-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;flex:none;
+    padding:6px 14px;border-top:1px solid hsl(var(--line));background:hsl(var(--surface-soft));
+    font-size:11.5px;color:hsl(var(--muted));font-variant-numeric:tabular-nums;
+  }
+  .editor-status-left{display:flex;align-items:center;gap:10px}
+  .rules-error-wrap{padding:10px 14px;border-top:1px solid hsl(var(--red) / .18);background:hsl(var(--red-soft) / .35);flex:none}
 
   /* View 4: Settings & ADB */
   .settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
@@ -568,7 +623,7 @@
     .view-pane.fill-view{height:auto;min-height:0}
     .events-body{max-height:60vh}
     .log-list{max-height:60vh}
-    .rules-editor-area{min-height:300px}
+    .code-editor-shell{min-height:300px}
     .page-head{align-items:flex-start}
     .card{flex-wrap:wrap;padding:12px 14px;gap:10px 12px}
     .card-main{flex:1 1 calc(100% - 54px)}
@@ -847,12 +902,32 @@
 
     <section class="panel rules-editor-panel" aria-label="规则内容编辑器">
       <div class="editor-bar">
-        <span id="rulesFileName">rules.yaml</span>
-        <span class="syntax-hint">支持：DOMAIN · DOMAIN-SUFFIX · DOMAIN-KEYWORD · IP-CIDR · MATCH（末条必填）</span>
+        <div class="editor-bar-left">
+          <span class="editor-filename" id="rulesFileName">rules.yaml</span>
+          <span class="badge warn" id="rulesDirtyBadge" hidden>未保存</span>
+        </div>
+        <div class="editor-bar-tools">
+          <button type="button" class="editor-tpl-btn" data-rtpl="DOMAIN-SUFFIX,example.com,DIRECT">+ 域名后缀</button>
+          <button type="button" class="editor-tpl-btn" data-rtpl="DOMAIN,example.com,DIRECT">+ 精确域名</button>
+          <button type="button" class="editor-tpl-btn" data-rtpl="IP-CIDR,10.0.0.0/8,DIRECT">+ 网段</button>
+        </div>
       </div>
-      <textarea id="rulesContent" class="rules-editor-area" spellcheck="false" aria-label="规则文件内容"></textarea>
+      <div class="code-editor-shell" id="rulesEditorShell">
+        <div class="code-gutter" id="rulesGutter" aria-hidden="true"></div>
+        <div class="code-canvas">
+          <pre class="code-highlight" id="rulesHighlight" aria-hidden="true"></pre>
+          <textarea id="rulesContent" class="rules-editor-area" spellcheck="false" wrap="off" aria-label="规则文件内容"></textarea>
+        </div>
+      </div>
       <div class="rules-error-wrap" id="rulesErrorWrap" hidden>
         <div class="inspect bad" id="rulesError" style="margin-top:0"></div>
+      </div>
+      <div class="editor-status-bar">
+        <div class="editor-status-left">
+          <span id="rulesCursorPos">第 1 行，第 1 列</span>
+          <span id="rulesLineTotal">共 1 行</span>
+        </div>
+        <span>Tab 缩进 · Shift+Tab 反缩进 · Ctrl+/ 注释 · Ctrl+S 保存</span>
       </div>
     </section>
   </section>
@@ -1011,6 +1086,8 @@ let EXIT_IP_STATE = null;
 let EXIT_IP_LOADING = false;
 let RULES_LOADED = false;
 let RULES_DIRTY = false;
+let RULES_ERROR_LINE = 0;
+let RULES_MATCH_LINE = 0;
 let SETTINGS_SYNCED = false;
 
 function esc(s){
@@ -1889,10 +1966,289 @@ async function removeApp(id){
   }
 }
 
-/* Rules Page */
+/* Rules Page & Code Editor */
+const VALID_RULE_KINDS = new Set(['DOMAIN','DOMAIN-SUFFIX','DOMAIN-KEYWORD','IP-CIDR','MATCH']);
+
+function splitYamlComment(line){
+  let quote = '';
+  for(let i = 0; i < line.length; i++){
+    const ch = line[i];
+    if(quote){
+      if(ch === '\\' && i + 1 < line.length){ i++; continue; }
+      if(ch === quote) quote = '';
+      continue;
+    }
+    if(ch === '"' || ch === "'"){ quote = ch; continue; }
+    if(ch === '#' && (i === 0 || /\s/.test(line[i - 1]))){
+      return [line.slice(0, i), line.slice(i)];
+    }
+  }
+  return [line, ''];
+}
+function highlightYamlLine(line){
+  if(!line) return ' ';
+  const [code, comment] = splitYamlComment(line);
+  let out = '';
+  if(code){
+    const keyMatch = code.match(/^([ \t]*)(rules|upstream)(:)(.*)$/i);
+    const itemMatch = code.match(/^([ \t]*)(-)([ \t]+)(.*)$/);
+    if(keyMatch){
+      out += esc(keyMatch[1])
+        + `<span class="tok-key">${esc(keyMatch[2])}</span>`
+        + `<span class="tok-punct">:</span>`
+        + (keyMatch[4] ? `<span class="tok-val">${esc(keyMatch[4])}</span>` : '');
+    }else if(itemMatch){
+      out += esc(itemMatch[1]) + `<span class="tok-punct">-</span>` + esc(itemMatch[3]);
+      const rest = itemMatch[4];
+      const parts = rest.split(',');
+      if(parts.length === 2 || parts.length === 3){
+        const kindRaw = parts[0];
+        const kindUp = kindRaw.trim().toUpperCase();
+        const kindOk = parts.length === 2 ? kindUp === 'MATCH' : (VALID_RULE_KINDS.has(kindUp) && kindUp !== 'MATCH');
+        out += `<span class="${kindOk ? 'tok-kind' : 'tok-bad'}">${esc(kindRaw)}</span><span class="tok-punct">,</span>`;
+        if(parts.length === 3){
+          out += `<span class="tok-target">${esc(parts[1])}</span><span class="tok-punct">,</span>`;
+        }
+        const actRaw = parts[parts.length - 1];
+        const actUp = actRaw.trim().toUpperCase();
+        const actCls = actUp === 'DIRECT' ? 'tok-direct' : (actUp === 'PROXY' ? 'tok-proxy' : 'tok-bad');
+        out += `<span class="${actCls}">${esc(actRaw)}</span>`;
+      }else{
+        out += esc(rest);
+      }
+    }else{
+      out += esc(code);
+    }
+  }
+  if(comment){
+    out += `<span class="tok-comment">${esc(comment)}</span>`;
+  }
+  return out || ' ';
+}
+function getEditorCursorPos(ta){
+  const pos = typeof ta.selectionStart === 'number' ? ta.selectionStart : 0;
+  const before = ta.value.slice(0, pos);
+  const line = before.split('\n').length;
+  const lastNl = before.lastIndexOf('\n');
+  const col = pos - lastNl;
+  return {line, col};
+}
+function syncRulesEditorScroll(){
+  const ta = $('#rulesContent');
+  const gutter = $('#rulesGutter');
+  const hl = $('#rulesHighlight');
+  if(!ta || !gutter || !hl) return;
+  gutter.scrollTop = ta.scrollTop;
+  hl.scrollTop = ta.scrollTop;
+  hl.scrollLeft = ta.scrollLeft;
+}
+function syncRulesEditor(){
+  const ta = $('#rulesContent');
+  const gutter = $('#rulesGutter');
+  const hl = $('#rulesHighlight');
+  if(!ta || !gutter || !hl) return;
+  const lines = ta.value.split('\n');
+  const {line: activeLine, col} = getEditorCursorPos(ta);
+  gutter.innerHTML = lines.map((_, idx) => {
+    const n = idx + 1;
+    const cls = ['gutter-num'];
+    if(n === activeLine) cls.push('is-active');
+    if(n === RULES_MATCH_LINE) cls.push('is-match');
+    if(n === RULES_ERROR_LINE) cls.push('is-error');
+    return `<div class="${cls.join(' ')}" data-line="${n}">${n}</div>`;
+  }).join('');
+  hl.innerHTML = lines.map((text, idx) => {
+    const n = idx + 1;
+    const cls = ['code-line'];
+    if(n === activeLine) cls.push('is-active');
+    if(n === RULES_MATCH_LINE) cls.push('is-match');
+    if(n === RULES_ERROR_LINE) cls.push('is-error');
+    return `<div class="${cls.join(' ')}">${highlightYamlLine(text)}</div>`;
+  }).join('');
+  $('#rulesCursorPos').textContent = `第 ${activeLine} 行，第 ${col} 列`;
+  $('#rulesLineTotal').textContent = `共 ${lines.length} 行`;
+  $('#rulesDirtyBadge').hidden = !RULES_DIRTY;
+  syncRulesEditorScroll();
+}
+function scrollRulesToLine(lineNum){
+  const ta = $('#rulesContent');
+  if(!ta || !lineNum || lineNum < 1) return;
+  const targetTop = Math.max(0, (lineNum - 3) * 22);
+  ta.scrollTop = targetTop;
+  syncRulesEditorScroll();
+}
+function selectRulesLine(lineNum){
+  const ta = $('#rulesContent');
+  if(!ta || !lineNum) return;
+  const lines = ta.value.split('\n');
+  const clamped = Math.max(1, Math.min(lineNum, lines.length));
+  let start = 0;
+  for(let i = 0; i < clamped - 1; i++) start += lines[i].length + 1;
+  const end = start + lines[clamped - 1].length;
+  ta.focus();
+  ta.setSelectionRange(start, end);
+  syncRulesEditor();
+}
+function replaceEditorRange(ta, start, end, text, newStart, newEnd){
+  ta.focus();
+  ta.setSelectionRange(start, end);
+  let inserted = false;
+  try{ inserted = document.execCommand('insertText', false, text); }catch(e){}
+  if(!inserted){
+    ta.setRangeText(text, start, end, 'end');
+  }
+  ta.setSelectionRange(newStart, newEnd);
+  RULES_DIRTY = true;
+  RULES_ERROR_LINE = 0;
+  RULES_MATCH_LINE = 0;
+  syncRulesEditor();
+}
+function handleRulesEditorKeydown(e){
+  const ta = $('#rulesContent');
+  if((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's'){
+    e.preventDefault();
+    saveRules();
+    return;
+  }
+  if((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '/'){
+    e.preventDefault();
+    const val = ta.value;
+    const s = ta.selectionStart, end = ta.selectionEnd;
+    const lineStart = val.lastIndexOf('\n', s - 1) + 1;
+    const endProbe = end > s && val[end - 1] === '\n' ? end - 1 : end;
+    const nlAfter = val.indexOf('\n', endProbe);
+    const lineEnd = nlAfter === -1 ? val.length : nlAfter;
+    const block = val.slice(lineStart, lineEnd);
+    const lines = block.split('\n');
+    const nonEmpty = lines.filter(l => l.trim().length > 0);
+    const allCommented = nonEmpty.length > 0 && nonEmpty.every(l => /^[ \t]*#/.test(l));
+    let outLines;
+    if(allCommented){
+      outLines = lines.map(l => l.replace(/^([ \t]*)# ?/, '$1'));
+    }else{
+      const minIndent = nonEmpty.length
+        ? Math.min(...nonEmpty.map(l => (l.match(/^[ \t]*/) || [''])[0].length))
+        : 0;
+      outLines = lines.map(l => l.trim().length ? l.slice(0, minIndent) + '# ' + l.slice(minIndent) : l);
+    }
+    const nextBlock = outLines.join('\n');
+    const firstDelta = outLines[0].length - lines[0].length;
+    const totalDelta = nextBlock.length - block.length;
+    const newStart = Math.max(lineStart, s + firstDelta);
+    const newEnd = s === end ? newStart : Math.max(newStart, end + totalDelta);
+    replaceEditorRange(ta, lineStart, lineEnd, nextBlock, newStart, newEnd);
+    return;
+  }
+  if(e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey){
+    e.preventDefault();
+    const val = ta.value;
+    const s = ta.selectionStart, end = ta.selectionEnd;
+    if(!e.shiftKey && s === end){
+      replaceEditorRange(ta, s, end, '  ', s + 2, s + 2);
+      return;
+    }
+    const lineStart = val.lastIndexOf('\n', s - 1) + 1;
+    const endProbe = end > s && val[end - 1] === '\n' ? end - 1 : end;
+    const nlAfter = val.indexOf('\n', endProbe);
+    const lineEnd = nlAfter === -1 ? val.length : nlAfter;
+    const block = val.slice(lineStart, lineEnd);
+    const lines = block.split('\n');
+    if(!e.shiftKey){
+      const indented = lines.map(l => '  ' + l);
+      const nextBlock = indented.join('\n');
+      const newStart = s + 2;
+      const newEnd = end + 2 * lines.length;
+      replaceEditorRange(ta, lineStart, lineEnd, nextBlock, newStart, newEnd);
+    }else{
+      const removed = [];
+      const outdented = lines.map(l => {
+        if(l.startsWith('  ')){ removed.push(2); return l.slice(2); }
+        if(l.startsWith('\t') || l.startsWith(' ')){ removed.push(1); return l.slice(1); }
+        removed.push(0);
+        return l;
+      });
+      const nextBlock = outdented.join('\n');
+      const totalRemoved = removed.reduce((a, b) => a + b, 0);
+      const newStart = Math.max(lineStart, s - removed[0]);
+      const newEnd = s === end ? newStart : Math.max(newStart, end - totalRemoved);
+      replaceEditorRange(ta, lineStart, lineEnd, nextBlock, newStart, newEnd);
+    }
+    return;
+  }
+  if(e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey){
+    e.preventDefault();
+    const val = ta.value;
+    const s = ta.selectionStart, end = ta.selectionEnd;
+    const lineStart = val.lastIndexOf('\n', s - 1) + 1;
+    const beforeCursor = val.slice(lineStart, s);
+    const indent = (beforeCursor.match(/^[ \t]*/) || [''])[0];
+    const emptyBullet = beforeCursor.match(/^([ \t]*)-\s+$/);
+    if(emptyBullet && s === end){
+      const keep = emptyBullet[1];
+      replaceEditorRange(ta, lineStart, end, keep, lineStart + keep.length, lineStart + keep.length);
+      return;
+    }
+    let insert = '\n' + indent;
+    if(beforeCursor.trimEnd().endsWith(':')){
+      insert = '\n' + indent + '  ';
+    }else if(/^[ \t]*-\s+\S/.test(beforeCursor)){
+      insert = '\n' + indent + '- ';
+    }
+    const nextPos = s + insert.length;
+    replaceEditorRange(ta, s, end, insert, nextPos, nextPos);
+  }
+}
+function insertRuleTemplate(tpl){
+  const ta = $('#rulesContent');
+  if(!ta) return;
+  const lines = ta.value.split('\n');
+  let matchIdx = -1;
+  for(let i = 0; i < lines.length; i++){
+    const [code] = splitYamlComment(lines[i]);
+    if(/^[ \t]*-\s*MATCH\s*,/i.test(code)){ matchIdx = i; break; }
+  }
+  const newLine = '  - ' + tpl;
+  let insertOffset;
+  let insertText;
+  if(matchIdx >= 0){
+    insertOffset = 0;
+    for(let i = 0; i < matchIdx; i++) insertOffset += lines[i].length + 1;
+    insertText = newLine + '\n';
+  }else{
+    insertOffset = ta.value.length;
+    insertText = (ta.value.endsWith('\n') || !ta.value ? '' : '\n') + newLine + '\n';
+  }
+  const targetToken = tpl.split(',')[1] || '';
+  const relTarget = targetToken ? insertText.indexOf(targetToken) : -1;
+  const selStart = relTarget >= 0 ? insertOffset + relTarget : insertOffset + newLine.length;
+  const selEnd = relTarget >= 0 ? selStart + targetToken.length : selStart;
+  replaceEditorRange(ta, insertOffset, insertOffset, insertText, selStart, selEnd);
+  scrollRulesToLine(getEditorCursorPos(ta).line);
+}
+function findMatchedRuleLine(ruleLabel){
+  const ta = $('#rulesContent');
+  if(!ta || !ruleLabel) return 0;
+  const wanted = ruleLabel.replace(/\s+/g, '').toUpperCase();
+  const lines = ta.value.split('\n');
+  for(let i = 0; i < lines.length; i++){
+    const [code] = splitYamlComment(lines[i]);
+    const trimmed = code.trim();
+    if(!trimmed.startsWith('-')) continue;
+    const norm = trimmed.slice(1).replace(/\s+/g, '').toUpperCase();
+    if(norm === wanted) return i + 1;
+  }
+  return 0;
+}
+function extractErrorLineNumber(msg){
+  const m = String(msg || '').match(/第\s*(\d+)\s*行/);
+  return m ? Number(m[1]) : 0;
+}
+
 async function loadRules(showToast=false){
   $('#rulesErrorWrap').hidden = true;
   $('#btnRulesSave').disabled = true;
+  RULES_ERROR_LINE = 0;
+  RULES_MATCH_LINE = 0;
   try{
     const r = await api('/api/rules');
     const p = r.path || 'rules.yaml';
@@ -1904,7 +2260,9 @@ async function loadRules(showToast=false){
     if(r.error){
       $('#rulesError').textContent = r.error;
       $('#rulesErrorWrap').hidden = false;
+      RULES_ERROR_LINE = extractErrorLineNumber(r.error);
     }
+    syncRulesEditor();
     if(showToast) toast('已重新加载规则文件', {type:'ok'});
   }catch(e){
     $('#rulesError').textContent = '读取规则文件失败: ' + e;
@@ -1916,10 +2274,12 @@ async function loadRules(showToast=false){
 async function testRuleMatch(){
   const host = $('#ruleTestHost').value.trim();
   const box = $('#ruleTestResult');
+  RULES_MATCH_LINE = 0;
   if(!host){
     box.className = 'inspect warn';
     box.textContent = '请输入要测试的域名或 URL';
     box.hidden = false;
+    syncRulesEditor();
     return;
   }
   try{
@@ -1928,11 +2288,15 @@ async function testRuleMatch(){
       box.className = 'inspect bad';
       box.textContent = r.error || '测试失败';
       box.hidden = false;
+      syncRulesEditor();
       return;
     }
     box.className = 'inspect ' + (r.action === 'DIRECT' ? 'good' : 'warn');
     box.textContent = `${r.host} → ${r.action === 'DIRECT' ? '直连 (DIRECT)' : '走代理 (PROXY)'} · 命中第 ${r.rule_index} 条：${r.rule}`;
     box.hidden = false;
+    RULES_MATCH_LINE = findMatchedRuleLine(r.rule);
+    syncRulesEditor();
+    if(RULES_MATCH_LINE) scrollRulesToLine(RULES_MATCH_LINE);
   }catch(e){
     box.className = 'inspect bad';
     box.textContent = '测试失败: ' + e;
@@ -1943,16 +2307,21 @@ async function saveRules(){
   const btn = $('#btnRulesSave');
   btn.disabled = true;
   $('#rulesErrorWrap').hidden = true;
+  RULES_ERROR_LINE = 0;
   try{
     const r = await api('/api/rules', {content: $('#rulesContent').value});
     if(!r.ok){
       $('#rulesError').textContent = r.error || '保存失败';
       $('#rulesErrorWrap').hidden = false;
+      RULES_ERROR_LINE = extractErrorLineNumber(r.error);
+      syncRulesEditor();
+      if(RULES_ERROR_LINE) scrollRulesToLine(RULES_ERROR_LINE);
       toast(r.error || '规则校验失败', {type:'err'});
       log('保存规则失败: ' + (r.error || ''), 'err');
       return;
     }
     RULES_DIRTY = false;
+    syncRulesEditor();
     if(r.state) STATE = r.state;
     render();
     log(`分流规则已更新（共 ${r.rule_count} 条）`, 'ok');
@@ -2143,7 +2512,20 @@ $('#btnRulesReload').onclick = () => loadRules(true);
 $('#btnRulesSave').onclick = saveRules;
 $('#btnRuleTest').onclick = testRuleMatch;
 $('#ruleTestHost').addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); testRuleMatch(); } });
-$('#rulesContent').addEventListener('input', () => { RULES_DIRTY = true; });
+const rulesTa = $('#rulesContent');
+rulesTa.addEventListener('input', () => { RULES_DIRTY = true; RULES_ERROR_LINE = 0; RULES_MATCH_LINE = 0; syncRulesEditor(); });
+rulesTa.addEventListener('scroll', syncRulesEditorScroll);
+rulesTa.addEventListener('click', syncRulesEditor);
+rulesTa.addEventListener('keyup', syncRulesEditor);
+rulesTa.addEventListener('select', syncRulesEditor);
+rulesTa.addEventListener('keydown', handleRulesEditorKeydown);
+$('#rulesGutter').addEventListener('click', e => {
+  const numEl = e.target.closest('.gutter-num[data-line]');
+  if(numEl) selectRulesLine(Number(numEl.dataset.line));
+});
+document.querySelectorAll('.editor-tpl-btn[data-rtpl]').forEach(btn => {
+  btn.onclick = () => insertRuleTemplate(btn.dataset.rtpl);
+});
 
 $('#btnSettingsSave').onclick = saveSettings;
 $('#btnAdbSettingsSave').onclick = saveAdbSettings;

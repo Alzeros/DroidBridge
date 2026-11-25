@@ -839,22 +839,92 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.evaluate(`STATE.proxy_events = ${JSON.stringify(savedEvents)}; renderEvents();`);
   });
 
-  await t.test('rules view tests domains and saves rules directly in full workspace', async () => {
+  await t.test('rules view provides code editor with line numbers, Tab/Shift+Tab, Enter auto-indent, Ctrl+/, and domain testing', async () => {
     await browser.evaluate("document.querySelector('#navRules').click()");
     await browser.waitFor("document.querySelector('#viewRules').hidden === false");
     await browser.waitFor("document.querySelector('#rulesContent').value.includes('MATCH,PROXY')");
+
+    // Verify line-number gutter, syntax highlight overlay, and matched rule highlighting
     await browser.evaluate("document.querySelector('#ruleTestHost').value = 'https://www.baidu.com/s'");
     await browser.evaluate("document.querySelector('#btnRuleTest').click()");
     await browser.waitFor("document.querySelector('#ruleTestResult').hidden === false");
-    const testText = await browser.evaluate("document.querySelector('#ruleTestResult').textContent");
-    assert.match(testText, /DOMAIN-SUFFIX,baidu\.com,DIRECT/);
+    const testInfo = await browser.evaluate(`(() => ({
+      testText: document.querySelector('#ruleTestResult').textContent,
+      gutterCount: document.querySelectorAll('#rulesGutter .gutter-num').length,
+      highlightLines: document.querySelectorAll('#rulesHighlight .code-line').length,
+      matchedGutter: document.querySelector('#rulesGutter .gutter-num.is-match')?.textContent || '',
+      hasDirectToken: !!document.querySelector('#rulesHighlight .tok-direct'),
+      hasProxyToken: !!document.querySelector('#rulesHighlight .tok-proxy'),
+    }))()`);
+    assert.match(testInfo.testText, /DOMAIN-SUFFIX,baidu\.com,DIRECT/);
+    assert.equal(testInfo.gutterCount, 4);
+    assert.equal(testInfo.highlightLines, 4);
+    assert.equal(testInfo.matchedGutter, '2');
+    assert.equal(testInfo.hasDirectToken, true);
+    assert.equal(testInfo.hasProxyToken, true);
     if (process.env.DROIDBRIDGE_UI_SHOT_RULES) {
       const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_RULES, Buffer.from(shot.data, 'base64'));
     }
 
-    await browser.evaluate("document.querySelector('#rulesContent').value = 'rules:\\n  - DOMAIN,new.test,DIRECT\\n  - MATCH,PROXY\\n'");
-    await browser.evaluate("document.querySelector('#btnRulesSave').click()");
+    // Verify real code editor keyboard shortcuts: Tab indent, Shift+Tab outdent, Enter smart indent, Ctrl+/ comment toggle, template insert
+    const editorBehavior = await browser.evaluate(`(() => {
+      const ta = document.querySelector('#rulesContent');
+      ta.value = 'rules:\\n- DOMAIN,a.test,DIRECT\\n- MATCH,PROXY';
+      syncRulesEditor();
+
+      // 1) Multi-line Tab indent on lines 2-3
+      const line2Start = ta.value.indexOf('- DOMAIN');
+      ta.focus();
+      ta.setSelectionRange(line2Start, ta.value.length);
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+      const afterTab = ta.value;
+
+      // 2) Shift+Tab outdent back
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+      const afterShiftTab = ta.value;
+
+      // 3) Re-indent then Ctrl+/ toggle comment on line 2
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+      const l2 = ta.value.indexOf('  - DOMAIN');
+      ta.setSelectionRange(l2 + 3, l2 + 3);
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: '/', ctrlKey: true, bubbles: true, cancelable: true }));
+      const afterComment = ta.value;
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: '/', ctrlKey: true, bubbles: true, cancelable: true }));
+      const afterUncomment = ta.value;
+
+      // 4) Enter at end of rule line auto-inserts "  - "
+      const l2End = ta.value.indexOf('DIRECT') + 'DIRECT'.length;
+      ta.setSelectionRange(l2End, l2End);
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      const afterEnter = ta.value;
+
+      // 5) Template button inserts rule above MATCH
+      ta.value = 'rules:\\n  - MATCH,PROXY\\n';
+      syncRulesEditor();
+      document.querySelector('.editor-tpl-btn[data-rtpl="DOMAIN,example.com,DIRECT"]').click();
+      const afterTpl = ta.value;
+      const dirtyVisible = !document.querySelector('#rulesDirtyBadge').hidden;
+      const cursorText = document.querySelector('#rulesCursorPos').textContent;
+      return { afterTab, afterShiftTab, afterComment, afterUncomment, afterEnter, afterTpl, dirtyVisible, cursorText };
+    })()`);
+    assert.equal(editorBehavior.afterTab, 'rules:\n  - DOMAIN,a.test,DIRECT\n  - MATCH,PROXY');
+    assert.equal(editorBehavior.afterShiftTab, 'rules:\n- DOMAIN,a.test,DIRECT\n- MATCH,PROXY');
+    assert.equal(editorBehavior.afterComment, 'rules:\n  # - DOMAIN,a.test,DIRECT\n  - MATCH,PROXY');
+    assert.equal(editorBehavior.afterUncomment, 'rules:\n  - DOMAIN,a.test,DIRECT\n  - MATCH,PROXY');
+    assert.equal(editorBehavior.afterEnter, 'rules:\n  - DOMAIN,a.test,DIRECT\n  - \n  - MATCH,PROXY');
+    assert.equal(editorBehavior.afterTpl, 'rules:\n  - DOMAIN,example.com,DIRECT\n  - MATCH,PROXY\n');
+    assert.equal(editorBehavior.dirtyVisible, true);
+    assert.match(editorBehavior.cursorText, /第 2 行/);
+
+    // Verify Ctrl+S saves rules directly
+    await browser.evaluate(`(() => {
+      const ta = document.querySelector('#rulesContent');
+      ta.value = 'rules:\\n  - DOMAIN,new.test,DIRECT\\n  - MATCH,PROXY\\n';
+      syncRulesEditor();
+      ta.focus();
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
+    })()`);
     const deadline = Date.now() + 5000;
     let saveReq;
     while (Date.now() < deadline) {
