@@ -93,6 +93,9 @@ function requireExists(filePath) {
 
 async function startServer() {
   const html = await readFile(path.join(root, 'index.html'), 'utf8');
+  const iconSvg = await readFile(path.join(root, 'droidbridge.svg'));
+  const iconPng = await readFile(path.join(root, 'droidbridge.png'));
+  const iconIco = await readFile(path.join(root, 'droidbridge.ico'));
   const requests = [];
   let rulesText = 'rules:\n  - DOMAIN-SUFFIX,baidu.com,DIRECT\n  - MATCH,PROXY\n';
   const server = http.createServer(async (req, res) => {
@@ -101,6 +104,21 @@ async function startServer() {
     if (url.pathname === '/' || url.pathname === '/index.html') {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.end(html);
+      return;
+    }
+    if (url.pathname === '/icon.svg') {
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      res.end(iconSvg);
+      return;
+    }
+    if (url.pathname === '/icon.png') {
+      res.setHeader('Content-Type', 'image/png');
+      res.end(iconPng);
+      return;
+    }
+    if (url.pathname === '/favicon.ico') {
+      res.setHeader('Content-Type', 'image/x-icon');
+      res.end(iconIco);
       return;
     }
     if (url.pathname === '/api/state') {
@@ -483,18 +501,40 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_DESKTOP, Buffer.from(shot.data, 'base64'));
     }
-    const chain = await browser.evaluate(`(() => ({
-      hops: document.querySelectorAll('#chain li.hop').length,
-      entry: document.querySelector('#hopEntryState').textContent,
-      clash: document.querySelector('#hopClashState').textContent,
-      badge: document.querySelector('#chainBadge').textContent,
-      entryFlow: document.querySelector('#hopEntry').classList.contains('flow'),
-    }))()`);
+    const chain = await browser.evaluate(`(() => {
+      const active = {
+        hops: document.querySelectorAll('#chain li.hop').length,
+        entry: document.querySelector('#hopEntryState').textContent,
+        clash: document.querySelector('#hopClashState').textContent,
+        badge: document.querySelector('#chainBadge').textContent,
+        appsFlow: document.querySelector('#hopApps').classList.contains('flow'),
+        entryFlow: document.querySelector('#hopEntry').classList.contains('flow'),
+        clashFlow: document.querySelector('#hopClash').classList.contains('flow'),
+      };
+      const prevRunning = STATE.apps[0].running;
+      STATE.apps[0].running = false;
+      renderChain();
+      const idleAppsFlow = document.querySelector('#hopApps').classList.contains('flow');
+      const idleEntryFlow = document.querySelector('#hopEntry').classList.contains('flow');
+      STATE.apps[0].running = prevRunning;
+      const prevEnabled = STATE.proxy.enabled;
+      STATE.proxy.enabled = false;
+      renderChain();
+      const disabledAppsFlow = document.querySelector('#hopApps').classList.contains('flow');
+      STATE.proxy.enabled = prevEnabled;
+      renderChain();
+      return { ...active, idleAppsFlow, idleEntryFlow, disabledAppsFlow };
+    })()`);
     assert.equal(chain.hops, 4);
     assert.equal(chain.entry, '12ms');
     assert.equal(chain.clash, '8ms');
     assert.equal(chain.badge, '畅通');
+    assert.equal(chain.appsFlow, true);
     assert.equal(chain.entryFlow, true);
+    assert.equal(chain.clashFlow, true);
+    assert.equal(chain.idleAppsFlow, false);
+    assert.equal(chain.idleEntryFlow, true);
+    assert.equal(chain.disabledAppsFlow, false);
   });
 
   await t.test('labels native Chromium browsers without a marker count', async () => {

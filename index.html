@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="pd-token" content="__DROIDBRIDGE_TOKEN__">
-<link rel="icon" type="image/png" sizes="256x256" href="/icon.png">
-<link rel="shortcut icon" href="/favicon.ico">
+<link rel="icon" type="image/x-icon" sizes="16x16 20x20 24x24 32x32 48x48 64x64 256x256" href="/favicon.ico?v=2">
+<link rel="icon" type="image/svg+xml" href="/icon.svg?v=2">
+<link rel="icon" type="image/png" sizes="256x256" href="/icon.png?v=2">
 <title>DroidBridge · 进程级网络应用台</title>
 <style>
   :root{
@@ -427,7 +428,7 @@
 <body>
 <header class="app-header">
   <div class="brand">
-    <div class="logo"><img src="/icon.png" alt="DroidBridge"></div>
+    <div class="logo"><img src="/icon.svg?v=2" alt="DroidBridge"></div>
     <div><h1>DroidBridge</h1><p>进程级代理启动台</p></div>
   </div>
   <div class="header-actions">
@@ -949,6 +950,7 @@ function renderChain(){
 
   const netOk = entryOn && clashOn;
   setHop('hopNet', netOk ? 'good' : '', netOk ? '链路畅通' : '待连通');
+  $('#hopApps').classList.toggle('flow', runningApps.length > 0 && entryOn);
   $('#hopEntry').classList.toggle('flow', entryOn);
   $('#hopClash').classList.toggle('flow', entryOn && clashOn);
 
