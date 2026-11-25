@@ -31,6 +31,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 import zlib
 from ctypes import wintypes
@@ -130,6 +131,7 @@ _icon_cache: dict[tuple[str, int], bytes | None] = {}
 _ui_browser_pids: set[int] = set()
 _proxy_server = None
 _proxy_thread = None
+MAX_PROXY_EVENTS = 300
 _proxy_events: list[dict] = []
 _proxy_events_lock = threading.Lock()
 _proxy_error = ""
@@ -562,7 +564,14 @@ def _record_proxy_event(host, action, ok=True, error="", rule=""):
         event["rule"] = str(rule)
     with _proxy_events_lock:
         _proxy_events.insert(0, event)
-        del _proxy_events[80:]
+        del _proxy_events[MAX_PROXY_EVENTS:]
+
+
+def clear_proxy_events() -> int:
+    with _proxy_events_lock:
+        cleared = len(_proxy_events)
+        _proxy_events.clear()
+        return cleared
 
 
 def expand(path: str) -> str:
@@ -588,6 +597,169 @@ def probe_proxy(host, port, timeout=0.35):
             return True, round((time.time() - started) * 1000)
     except (OSError, ValueError, TypeError, OverflowError):
         return False, round((time.time() - started) * 1000)
+
+
+EXIT_IP_URL = "https://api.ip.sb/geoip"
+EXIT_IP_FALLBACK_URL = "https://api.ip.sb/ip"
+
+
+def _format_exit_location(country: str, region: str, city: str) -> str:
+    parts = []
+    seen = set()
+    for item in (country, region, city):
+        text = str(item or "").strip()
+        key = text.lower()
+        if text and key not in seen:
+            seen.add(key)
+            parts.append(text)
+    return ", ".join(parts)
+
+
+def _parse_exit_ip_response(raw: str) -> dict:
+    text = (raw or "").strip()
+    if not text:
+        raise ValueError("empty response")
+    if text.startswith("{"):
+        data = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError("unexpected json")
+        ip_raw = str(data.get("ip") or "").strip()
+        parsed_ip = ipaddress.ip_address(ip_raw)
+        country_code = str(data.get("country_code") or "").strip().upper()
+        country = str(data.get("country") or "").strip()
+        region = str(data.get("region") or "").strip()
+        city = str(data.get("city") or "").strip()
+        isp = ""
+        for key in ("isp", "asn_organization", "organization"):
+            val = str(data.get(key) or "").strip()
+            if val:
+                isp = val
+                break
+        asn_val = data.get("asn")
+        asn = None
+        if isinstance(asn_val, int) and not isinstance(asn_val, bool) and asn_val > 0:
+            asn = asn_val
+        elif isinstance(asn_val, str) and asn_val.strip().isdigit():
+            asn = int(asn_val.strip())
+        timezone = str(data.get("timezone") or "").strip()
+        return {
+            "ip": str(parsed_ip),
+            "country_code": country_code,
+            "country": country,
+            "region": region,
+            "city": city,
+            "location": _format_exit_location(country, region, city),
+            "isp": isp,
+            "asn": asn,
+            "timezone": timezone,
+        }
+    parsed_ip = ipaddress.ip_address(text)
+    return {
+        "ip": str(parsed_ip),
+        "country_code": "",
+        "country": "",
+        "region": "",
+        "city": "",
+        "location": "",
+        "isp": "",
+        "asn": None,
+        "timezone": "",
+    }
+
+
+def query_exit_ip(cfg, url: str = EXIT_IP_URL, timeout: float = 6.0) -> dict:
+    p = cfg["proxy"]
+    route_table = RouteTable.load(cfg)
+    upstream_target = route_table.upstream if not route_table.error else (p["host"], p["port"])
+    via = "http://%s:%s" % upstream_target
+    checked_at = time.strftime("%H:%M:%S")
+    empty_geo = {
+        "country_code": "",
+        "country": "",
+        "region": "",
+        "city": "",
+        "location": "",
+        "isp": "",
+        "asn": None,
+        "timezone": "",
+    }
+
+    upstream_online, _ = probe_proxy(*upstream_target)
+    if not upstream_online:
+        return {
+            "ok": False,
+            "ip": "",
+            **empty_geo,
+            "error": "手机 Clash 上游离线，无法查询出口 IP",
+            "source": url,
+            "via": via,
+            "latency_ms": 0,
+            "checked_at": checked_at,
+        }
+
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": via, "https": via})
+    )
+    candidates = [url]
+    if url == EXIT_IP_URL and EXIT_IP_FALLBACK_URL not in candidates:
+        candidates.append(EXIT_IP_FALLBACK_URL)
+
+    started = time.time()
+    last_err = "查询出口 IP 失败"
+    for idx, target_url in enumerate(candidates):
+        req = urllib.request.Request(
+            target_url,
+            headers={
+                "User-Agent": "curl/8.7.1",
+                "Accept": "application/json, text/plain;q=0.9",
+                "Cache-Control": "no-cache",
+            },
+        )
+        try:
+            with opener.open(req, timeout=timeout) as resp:
+                raw = resp.read(8192).decode("utf-8", errors="replace").strip()
+            latency_ms = round((time.time() - started) * 1000)
+            info = _parse_exit_ip_response(raw)
+            return {
+                "ok": True,
+                **info,
+                "error": "",
+                "source": target_url,
+                "via": via,
+                "latency_ms": latency_ms,
+                "checked_at": time.strftime("%H:%M:%S"),
+            }
+        except ValueError:
+            last_err = "出口 IP 接口返回内容异常"
+            if idx + 1 < len(candidates):
+                continue
+        except urllib.error.HTTPError as exc:
+            last_err = "查询失败（HTTP %s）" % exc.code
+            if idx + 1 < len(candidates):
+                continue
+        except (TimeoutError, socket.timeout):
+            last_err = "查询出口 IP 超时"
+            break
+        except urllib.error.URLError as exc:
+            reason = getattr(exc, "reason", exc)
+            if isinstance(reason, (TimeoutError, socket.timeout)):
+                last_err = "查询出口 IP 超时"
+            else:
+                last_err = "查询出口 IP 失败：%s" % reason
+            break
+        except OSError as exc:
+            last_err = "查询出口 IP 失败：%s" % exc
+            break
+    return {
+        "ok": False,
+        "ip": "",
+        **empty_geo,
+        "error": last_err,
+        "source": url,
+        "via": via,
+        "latency_ms": round((time.time() - started) * 1000),
+        "checked_at": time.strftime("%H:%M:%S"),
+    }
 
 
 def detect_kind(exe: str):
@@ -2481,6 +2653,10 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/adb/state":
                 self.send_json(AdbTool(load_config()).state())
                 return
+
+            if parsed.path == "/api/exit-ip":
+                self.send_json(query_exit_ip(load_config()))
+                return
             
             if parsed.path == "/api/inspect":
                 exe = expand(query.get("path", [""])[0])
@@ -2752,6 +2928,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             res["state"] = make_state()
             self.send_json(res)
+            return
+
+        if path == "/api/events/clear":
+            cleared = clear_proxy_events()
+            self.send_json({"ok": True, "cleared": cleared, "state": make_state()})
             return
 
         if path in ("/api/app/add", "/api/app/update"):

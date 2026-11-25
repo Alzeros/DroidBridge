@@ -445,6 +445,119 @@ class SingleRouteInjectionTests(unittest.TestCase):
             self.assertNotIn("bypass", persisted["proxy"])
             self.assertNotIn("bypass", persisted["apps"][0])
 
+    def test_proxy_events_retention_cap_and_clear(self):
+        droidbridge.clear_proxy_events()
+        self.assertGreaterEqual(droidbridge.MAX_PROXY_EVENTS, 300)
+        total = droidbridge.MAX_PROXY_EVENTS + 25
+        for idx in range(total):
+            droidbridge._record_proxy_event(f"host-{idx}.example", "DIRECT", ok=True, rule="MATCH,DIRECT")
+
+        with droidbridge._proxy_events_lock:
+            snapshot = list(droidbridge._proxy_events)
+        self.assertEqual(len(snapshot), droidbridge.MAX_PROXY_EVENTS)
+        self.assertEqual(snapshot[0]["host"], f"host-{total - 1}.example")
+        self.assertEqual(snapshot[-1]["host"], "host-25.example")
+
+        cleared = droidbridge.clear_proxy_events()
+        self.assertEqual(cleared, droidbridge.MAX_PROXY_EVENTS)
+        with droidbridge._proxy_events_lock:
+            self.assertEqual(droidbridge._proxy_events, [])
+
+    def test_query_exit_ip_success_offline_and_invalid(self):
+        cfg = self.config()
+
+        class FakeResp:
+            def __init__(self, body: bytes):
+                self._body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self, _limit=-1):
+                return self._body
+
+        captured = {}
+
+        class FakeOpener:
+            def __init__(self, responses):
+                self._responses = list(responses)
+
+            def open(self, req, timeout=None):
+                captured.setdefault("urls", []).append(req.full_url)
+                captured["ua"] = req.get_header("User-agent")
+                captured["timeout"] = timeout
+                nxt = self._responses.pop(0)
+                if isinstance(nxt, Exception):
+                    raise nxt
+                return FakeResp(nxt)
+
+        with patch.object(droidbridge, "probe_proxy", return_value=(False, 1)):
+            offline = droidbridge.query_exit_ip(cfg)
+        self.assertFalse(offline["ok"])
+        self.assertIn("离线", offline["error"])
+
+        seen_proxies = {}
+        real_proxy_handler = droidbridge.urllib.request.ProxyHandler
+
+        def fake_proxy_handler(proxies):
+            seen_proxies.update(proxies)
+            return real_proxy_handler(proxies)
+
+        geo_payload = json.dumps({
+            "ip": "87.86.22.214",
+            "country_code": "JP",
+            "country": "Japan",
+            "region": "Tokyo",
+            "city": "Tokyo",
+            "isp": "HYW",
+            "asn": 11421,
+            "timezone": "Asia/Tokyo",
+        }).encode("utf-8")
+        with (
+            patch.object(droidbridge, "probe_proxy", return_value=(True, 2)),
+            patch.object(droidbridge.urllib.request, "ProxyHandler", side_effect=fake_proxy_handler),
+            patch.object(droidbridge.urllib.request, "build_opener", return_value=FakeOpener([geo_payload])),
+        ):
+            ok_geo = droidbridge.query_exit_ip(cfg)
+        self.assertTrue(ok_geo["ok"])
+        self.assertEqual(ok_geo["ip"], "87.86.22.214")
+        self.assertEqual(ok_geo["country_code"], "JP")
+        self.assertEqual(ok_geo["location"], "Japan, Tokyo")
+        self.assertEqual(ok_geo["isp"], "HYW")
+        self.assertEqual(ok_geo["asn"], 11421)
+        self.assertEqual(captured["urls"][-1], "https://api.ip.sb/geoip")
+        self.assertEqual(seen_proxies["https"], "http://127.0.0.1:5038")
+
+        # Fallback to /ip plain-text IPv6 when /geoip returns non-JSON error page
+        with (
+            patch.object(droidbridge, "probe_proxy", return_value=(True, 2)),
+            patch.object(droidbridge.urllib.request, "build_opener", return_value=FakeOpener([b"<html>502</html>", b"2001:db8::1\n"])),
+        ):
+            ok_fallback = droidbridge.query_exit_ip(cfg)
+        self.assertTrue(ok_fallback["ok"])
+        self.assertEqual(ok_fallback["ip"], "2001:db8::1")
+        self.assertEqual(ok_fallback["source"], "https://api.ip.sb/ip")
+        self.assertEqual(ok_fallback["location"], "")
+
+        with (
+            patch.object(droidbridge, "probe_proxy", return_value=(True, 2)),
+            patch.object(droidbridge.urllib.request, "build_opener", return_value=FakeOpener([b"<html>error</html>", b"not-an-ip"])),
+        ):
+            bad_body = droidbridge.query_exit_ip(cfg)
+        self.assertFalse(bad_body["ok"])
+        self.assertIn("异常", bad_body["error"])
+
+        with (
+            patch.object(droidbridge, "probe_proxy", return_value=(True, 2)),
+            patch.object(droidbridge.urllib.request, "build_opener", return_value=FakeOpener([TimeoutError("timed out")])),
+        ):
+            timed_out = droidbridge.query_exit_ip(cfg)
+        self.assertFalse(timed_out["ok"])
+        self.assertIn("超时", timed_out["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

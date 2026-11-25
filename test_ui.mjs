@@ -98,6 +98,7 @@ async function startServer() {
   const iconIco = await readFile(path.join(root, 'droidbridge.ico'));
   const requests = [];
   let rulesText = 'rules:\n  - DOMAIN-SUFFIX,baidu.com,DIRECT\n  - MATCH,PROXY\n';
+  let exitIpCalls = 0;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -128,6 +129,29 @@ async function startServer() {
     }
     if (url.pathname === '/api/adb/state') {
       res.end(JSON.stringify(adbState));
+      return;
+    }
+    if (url.pathname === '/api/exit-ip') {
+      exitIpCalls += 1;
+      requests.push({ path: url.pathname, call: exitIpCalls });
+      const first = exitIpCalls === 1;
+      res.end(JSON.stringify({
+        ok: true,
+        ip: first ? '203.0.113.42' : '198.51.100.77',
+        country_code: first ? 'JP' : 'SG',
+        country: first ? 'Japan' : 'Singapore',
+        region: first ? 'Tokyo' : '',
+        city: first ? 'Tokyo' : 'Singapore',
+        location: first ? 'Japan, Tokyo' : 'Singapore',
+        isp: first ? 'HYW' : 'Cloudflare',
+        asn: first ? 11421 : 13335,
+        timezone: first ? 'Asia/Tokyo' : 'Asia/Singapore',
+        error: '',
+        source: 'https://api.ip.sb/geoip',
+        via: 'http://127.0.0.1:5038',
+        latency_ms: first ? 185 : 142,
+        checked_at: first ? '14:02:15' : '14:02:29',
+      }));
       return;
     }
     if (url.pathname === '/api/adb/forward' || url.pathname === '/api/adb/unforward') {
@@ -170,6 +194,13 @@ async function startServer() {
       const parsed = body ? JSON.parse(body) : {};
       requests.push({ path: url.pathname, body: parsed });
       res.end(JSON.stringify({ ok: true, rule: `DOMAIN,${parsed.host},${parsed.action}`, changed: true, message: `已添加规则：DOMAIN,${parsed.host},${parsed.action}`, state }));
+      return;
+    }
+    if (url.pathname === '/api/events/clear') {
+      requests.push({ path: url.pathname });
+      const cleared = state.proxy_events.length;
+      state.proxy_events = [];
+      res.end(JSON.stringify({ ok: true, cleared, state }));
       return;
     }
     if (url.pathname === '/api/app/firefox/sync') {
@@ -537,6 +568,43 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(chain.disabledAppsFlow, false);
   });
 
+  await t.test('loads exit IP, location, ISP/ASN from api.ip.sb and updates on manual refresh', async () => {
+    await browser.waitFor("document.querySelector('#exitIpVal')?.textContent === '203.0.113.42'");
+    const initial = await browser.evaluate(`(() => ({
+      val: document.querySelector('#exitIpVal').textContent,
+      disabled: document.querySelector('#exitIpVal').disabled,
+      cc: document.querySelector('#exitIpCountryCode').textContent,
+      ccHidden: document.querySelector('#exitIpCountryCode').hidden,
+      loc: document.querySelector('#exitIpLoc').textContent,
+      isp: document.querySelector('#exitIpIsp').textContent,
+      meta: document.querySelector('#exitIpMeta').textContent,
+    }))()`);
+    assert.equal(initial.val, '203.0.113.42');
+    assert.equal(initial.disabled, false);
+    assert.equal(initial.cc, 'JP');
+    assert.equal(initial.ccHidden, false);
+    assert.equal(initial.loc, 'Japan, Tokyo');
+    assert.equal(initial.isp, 'HYW · AS11421');
+    assert.match(initial.meta, /api\.ip\.sb/);
+    assert.match(initial.meta, /14:02:15/);
+
+    await browser.evaluate("document.querySelector('#btnRefreshExitIp').click()");
+    await browser.waitFor("document.querySelector('#exitIpVal')?.textContent === '198.51.100.77'");
+    const refreshed = await browser.evaluate(`(() => ({
+      val: document.querySelector('#exitIpVal').textContent,
+      cc: document.querySelector('#exitIpCountryCode').textContent,
+      loc: document.querySelector('#exitIpLoc').textContent,
+      isp: document.querySelector('#exitIpIsp').textContent,
+      meta: document.querySelector('#exitIpMeta').textContent,
+    }))()`);
+    assert.equal(refreshed.val, '198.51.100.77');
+    assert.equal(refreshed.cc, 'SG');
+    assert.equal(refreshed.loc, 'Singapore');
+    assert.equal(refreshed.isp, 'Cloudflare · AS13335');
+    assert.match(refreshed.meta, /14:02:29/);
+    assert.equal(requests.filter((r) => r.path === '/api/exit-ip').length, 2);
+  });
+
   await t.test('labels native Chromium browsers without a marker count', async () => {
     const nativeBrowser = await browser.evaluate(`(() => {
       const sampleCard = document.querySelector('.card[data-id="sample-app"]');
@@ -691,6 +759,52 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     }
     assert.deepEqual(quickReq?.body, { host: 'www.baidu.com', action: 'PROXY' });
     await browser.evaluate("document.querySelector('#eventChips [data-efilter=\"all\"]').click()");
+
+    // Verify search filter, >40-row rendering (no 40-item truncation), recoverable empty state, and clear button
+    await browser.evaluate(`(() => {
+      const input = document.querySelector('#eventSearch');
+      input.value = 'xiaohongshu';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    assert.equal(await browser.evaluate("document.querySelectorAll('#eventsBody .event-row').length"), 1);
+    assert.equal(await browser.evaluate("document.querySelector('#eventsBody .event-host .h').textContent"), 'www.xiaohongshu.com');
+    assert.equal(await browser.evaluate("document.querySelector('#btnEventSearchClear').hidden"), false);
+
+    await browser.evaluate(`(() => {
+      const input = document.querySelector('#eventSearch');
+      input.value = 'no-such-domain-xyz';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    assert.equal(await browser.evaluate("document.querySelectorAll('#eventsBody .event-row').length"), 0);
+    assert.equal(await browser.evaluate("!!document.querySelector('#btnClearEventFilters')"), true);
+    await browser.evaluate("document.querySelector('#btnClearEventFilters').click()");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#eventsBody .event-row').length"), 3);
+
+    const largeRenderCount = await browser.evaluate(`(() => {
+      const backup = STATE.proxy_events.slice();
+      STATE.proxy_events = Array.from({ length: 60 }, (_, i) => ({
+        time: '14:10:00',
+        host: 'svc-' + i + '.example',
+        action: i % 2 === 0 ? 'PROXY' : 'DIRECT',
+        ok: true,
+        rule: 'MATCH,PROXY',
+      }));
+      renderEvents();
+      const rendered = document.querySelectorAll('#eventsBody .event-row').length;
+      STATE.proxy_events = backup;
+      renderEvents();
+      return rendered;
+    })()`);
+    assert.equal(largeRenderCount, 60);
+
+    const savedEvents = state.proxy_events.slice();
+    await browser.evaluate("document.querySelector('#btnClearEvents').click()");
+    await browser.waitFor("document.querySelectorAll('#eventsBody .event-row').length === 0");
+    assert.equal(await browser.evaluate("document.querySelector('#btnClearEvents').disabled"), true);
+    assert.equal(await browser.evaluate("document.querySelector('#eventsCount').textContent"), '等待请求');
+    assert.ok(requests.some((r) => r.path === '/api/events/clear'));
+    state.proxy_events = savedEvents;
+    await browser.evaluate(`STATE.proxy_events = ${JSON.stringify(savedEvents)}; renderEvents();`);
   });
 
   await t.test('rules editor modal tests domains, saves rules, and closes on escape', async () => {

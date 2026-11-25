@@ -271,6 +271,34 @@
     border-radius:8px;padding:0;display:flex;align-items:center;gap:var(--space-2)}
   button.hop::before,button.hop::after{content:none}
   button.hop:hover{background:hsl(var(--surface-soft))}
+  .exit-ip-wrap{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid hsl(var(--line))}
+  .exit-ip-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
+    font-size:var(--text-xs);color:hsl(var(--muted))}
+  .exit-ip-refresh{display:inline-flex;align-items:center;gap:4px;border:1px solid hsl(var(--line));
+    background:hsl(var(--surface-soft));color:hsl(var(--muted));padding:2px 8px;border-radius:999px;
+    font-size:11px;line-height:1.4;white-space:nowrap;
+    transition:border-color var(--transition),background var(--transition),color var(--transition)}
+  .exit-ip-refresh:hover:not(:disabled){border-color:hsl(var(--primary) / .35);background:hsl(var(--primary-soft));
+    color:hsl(var(--primary-hover))}
+  .exit-ip-refresh:disabled{opacity:.6;cursor:not-allowed}
+  .exit-ip-refresh svg{width:12px;height:12px;flex:none;display:block}
+  .exit-ip-refresh.loading svg{animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .exit-ip-main{margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);min-height:22px}
+  .exit-ip-val{display:inline-flex;align-items:center;max-width:100%;min-width:0;border:0;background:transparent;padding:0;
+    text-align:left;font:650 var(--text-md)/1.35 ui-monospace,Consolas,"Cascadia Code",monospace;
+    color:hsl(var(--text));word-break:break-all;border-radius:6px;transition:color var(--transition)}
+  .exit-ip-val:not(:disabled):hover{color:hsl(var(--primary))}
+  .exit-ip-val:disabled{cursor:default;color:hsl(var(--muted))}
+  .exit-ip-val.bad{color:hsl(var(--red))}
+  .exit-ip-details{margin-top:6px;display:grid;gap:3px}
+  .exit-ip-row{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);font-size:var(--text-xs)}
+  .exit-ip-row span{color:hsl(var(--muted));flex:none;white-space:nowrap}
+  .exit-ip-row strong{color:hsl(var(--text));font-weight:550;min-width:0;text-align:right;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .exit-ip-meta{margin-top:5px;font-size:var(--text-xs);color:hsl(var(--subtle));font-variant-numeric:tabular-nums;
+    word-break:break-word}
+  .exit-ip-meta.bad{color:hsl(var(--red))}
   .spark-wrap{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid hsl(var(--line))}
   .spark-head{display:flex;align-items:baseline;justify-content:space-between;font-size:var(--text-xs);color:hsl(var(--muted))}
   .spark-head strong{font-size:var(--text-md);color:hsl(var(--text));font-variant-numeric:tabular-nums}
@@ -304,7 +332,12 @@
   .proxy-actions{display:flex;gap:var(--space-2);margin-top:var(--space-4)}
   .proxy-actions .btn{flex:1;margin-top:0;justify-content:center}
 
-  .events-body{max-height:236px;overflow:auto;padding:var(--space-1) var(--space-4) var(--space-3)}
+  .events-bar{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;
+    padding:9px var(--space-4);border-bottom:1px solid hsl(var(--line) / .75);background:hsl(var(--surface-soft) / .55)}
+  .event-search{flex:1;min-width:170px;max-width:none}
+  .event-search input{padding:6px 28px 6px 30px;font-size:var(--text-xs)}
+  .event-head-actions{display:flex;align-items:center;gap:var(--space-2);flex:none}
+  .events-body{max-height:260px;overflow:auto;padding:var(--space-1) var(--space-4) var(--space-3)}
   .event-row{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:var(--space-3);align-items:center;
     padding:6px 0;border-bottom:1px dashed hsl(var(--line));font-size:var(--text-sm)}
   .event-row:last-child{border-bottom:0}
@@ -493,13 +526,10 @@
             </button>
           </div>
           <div class="diagnostics-tools">
-            <div class="chips" id="eventChips" role="group" aria-label="分流筛选">
-              <button class="chip tiny active" data-efilter="all">全部</button>
-              <button class="chip tiny" data-efilter="PROXY">走代理</button>
-              <button class="chip tiny" data-efilter="DIRECT">直连</button>
-              <button class="chip tiny" data-efilter="ERROR">错误</button>
+            <div class="event-head-actions" id="eventHeadActions">
+              <button class="btn tiny" id="btnOpenRules" style="white-space:nowrap;flex:none">编辑规则</button>
+              <button class="btn tiny" id="btnClearEvents" style="white-space:nowrap;flex:none">清空</button>
             </div>
-            <button class="btn tiny" id="btnOpenRules" style="white-space:nowrap;flex:none">编辑规则</button>
             <div class="log-tools" id="logTools" hidden>
               <div class="chips" id="logChips" role="group" aria-label="日志筛选">
                 <button class="chip tiny active" data-lfilter="all">全部</button>
@@ -509,6 +539,19 @@
               <button class="btn tiny" id="btnCopyLog">复制</button>
               <button class="btn tiny" id="btnClearLog">清空</button>
             </div>
+          </div>
+        </div>
+        <div class="events-bar" id="eventsBar">
+          <div class="search event-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="eventSearch" type="search" placeholder="搜索域名、命中规则或错误信息…" aria-label="搜索分流记录">
+            <button class="search-clear" id="btnEventSearchClear" hidden aria-label="清除分流搜索">×</button>
+          </div>
+          <div class="chips" id="eventChips" role="group" aria-label="分流筛选">
+            <button class="chip tiny active" data-efilter="all">全部</button>
+            <button class="chip tiny" data-efilter="PROXY">走代理</button>
+            <button class="chip tiny" data-efilter="DIRECT">直连</button>
+            <button class="chip tiny" data-efilter="ERROR">错误</button>
           </div>
         </div>
         <div class="events-body" id="eventsBody" role="tabpanel" aria-labelledby="tabEvents"></div>
@@ -547,6 +590,24 @@
               <span class="hop-state" id="hopNetState"></span>
             </li>
           </ol>
+          <div class="exit-ip-wrap" id="exitIpWrap">
+            <div class="exit-ip-head">
+              <span title="经由手机 Clash 上游访问 https://api.ip.sb/geoip 获取当前代理出口信息">出口 IP</span>
+              <button type="button" class="exit-ip-refresh" id="btnRefreshExitIp" title="手动刷新出口 IP" aria-label="刷新出口 IP">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+                <span>刷新</span>
+              </button>
+            </div>
+            <div class="exit-ip-main">
+              <button type="button" class="exit-ip-val" id="exitIpVal" disabled title="点击复制出口 IP">查询中…</button>
+              <span class="badge proxy" id="exitIpCountryCode" hidden></span>
+            </div>
+            <div class="exit-ip-details" id="exitIpDetails" hidden>
+              <div class="exit-ip-row" id="exitIpLocRow" hidden><span>归属地</span><strong id="exitIpLoc"></strong></div>
+              <div class="exit-ip-row" id="exitIpIspRow" hidden><span>运营商</span><strong id="exitIpIsp"></strong></div>
+            </div>
+            <div class="exit-ip-meta" id="exitIpMeta">来源 api.ip.sb · 手动刷新</div>
+          </div>
           <div class="spark-wrap">
             <div class="spark-head"><span title="手机 Clash 上游端口延迟趋势">上游延迟趋势</span><strong id="sparkNow">—</strong></div>
             <svg id="spark" viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true">
@@ -719,6 +780,7 @@ let APP_FILTER = 'all';
 let APP_SORT = 'default';
 let APP_QUERY = '';
 let EVENT_FILTER = 'all';
+let EVENT_QUERY = '';
 let LOG_FILTER = 'all';
 let LATENCY_HISTORY = [];
 let lastGridSig = '';
@@ -780,10 +842,13 @@ const LOG_COLLAPSE_KEY = 'droidbridge.logCollapsed';
 
 function setDiagnosticTab(tab){
   const showLogs = tab === 'logs';
+  $('#eventsBar').hidden = showLogs;
   $('#eventsBody').hidden = showLogs;
   $('#logPanel').hidden = !showLogs;
+  $('#eventHeadActions').hidden = showLogs;
   $('#eventChips').hidden = showLogs;
   $('#btnOpenRules').hidden = showLogs;
+  $('#btnClearEvents').hidden = showLogs;
   $('#logTools').hidden = !showLogs;
   $('#tabEvents').classList.toggle('active', !showLogs);
   $('#tabLogs').classList.toggle('active', showLogs);
@@ -827,6 +892,117 @@ function initial(name){
 }
 let ADB_STATE = null;
 let SELECTED_ADB_SERIAL = '';
+let EXIT_IP_STATE = null;
+let EXIT_IP_LOADING = false;
+
+function renderExitIp(){
+  const valEl = $('#exitIpVal');
+  const ccEl = $('#exitIpCountryCode');
+  const detailsEl = $('#exitIpDetails');
+  const locRow = $('#exitIpLocRow');
+  const locEl = $('#exitIpLoc');
+  const ispRow = $('#exitIpIspRow');
+  const ispEl = $('#exitIpIsp');
+  const metaEl = $('#exitIpMeta');
+  const btn = $('#btnRefreshExitIp');
+  if(!valEl || !metaEl || !btn) return;
+  btn.disabled = EXIT_IP_LOADING;
+  btn.classList.toggle('loading', EXIT_IP_LOADING);
+  const labelSpan = btn.querySelector('span');
+  if(labelSpan) labelSpan.textContent = EXIT_IP_LOADING ? '查询中' : '刷新';
+
+  const s = EXIT_IP_STATE;
+  if(EXIT_IP_LOADING && !s){
+    valEl.textContent = '查询中…';
+    valEl.className = 'exit-ip-val';
+    valEl.disabled = true;
+    ccEl.hidden = true;
+    detailsEl.hidden = true;
+    metaEl.textContent = '正在通过手机 Clash 访问 api.ip.sb…';
+    metaEl.className = 'exit-ip-meta';
+    return;
+  }
+  if(!s){
+    valEl.textContent = '—';
+    valEl.className = 'exit-ip-val';
+    valEl.disabled = true;
+    ccEl.hidden = true;
+    detailsEl.hidden = true;
+    metaEl.textContent = '来源 api.ip.sb · 点击刷新获取';
+    metaEl.className = 'exit-ip-meta';
+    return;
+  }
+  if(s.ok && s.ip){
+    valEl.textContent = s.ip;
+    valEl.className = 'exit-ip-val';
+    valEl.disabled = false;
+    valEl.title = `点击复制出口 IP（${s.ip}）`;
+
+    const cc = (s.country_code || '').trim();
+    ccEl.textContent = cc;
+    ccEl.hidden = !cc;
+
+    const loc = (s.location || '').trim();
+    const ispParts = [];
+    if(s.isp) ispParts.push(String(s.isp).trim());
+    if(s.asn) ispParts.push('AS' + s.asn);
+    const ispText = ispParts.join(' · ');
+
+    locRow.hidden = !loc;
+    locEl.textContent = loc;
+    locEl.title = s.timezone ? `${loc}（${s.timezone}）` : loc;
+
+    ispRow.hidden = !ispText;
+    ispEl.textContent = ispText;
+    ispEl.title = ispText;
+
+    detailsEl.hidden = !loc && !ispText;
+
+    const lat = typeof s.latency_ms === 'number' && s.latency_ms > 0 ? ` · ${s.latency_ms}ms` : '';
+    metaEl.textContent = EXIT_IP_LOADING
+      ? '正在刷新出口 IP…'
+      : `api.ip.sb · ${s.checked_at || ''} 更新${lat}`;
+    metaEl.className = 'exit-ip-meta';
+  }else{
+    valEl.textContent = '未获取';
+    valEl.className = 'exit-ip-val bad';
+    valEl.disabled = true;
+    valEl.title = s.error || '查询出口 IP 失败';
+    ccEl.hidden = true;
+    detailsEl.hidden = true;
+    metaEl.textContent = EXIT_IP_LOADING ? '正在重新查询…' : (s.error || '查询出口 IP 失败');
+    metaEl.className = 'exit-ip-meta' + (EXIT_IP_LOADING ? '' : ' bad');
+  }
+}
+
+async function loadExitIp(manual=false){
+  if(EXIT_IP_LOADING) return;
+  EXIT_IP_LOADING = true;
+  renderExitIp();
+  try{
+    const r = await api('/api/exit-ip');
+    EXIT_IP_STATE = r;
+    if(manual){
+      if(r && r.ok && r.ip){
+        toast(`出口 IP：${r.ip}`, {type:'ok'});
+        log(`出口 IP 已刷新：${r.ip}${r.latency_ms ? '（'+r.latency_ms+'ms）' : ''}`, 'ok');
+      }else{
+        const msg = (r && r.error) || '查询出口 IP 失败';
+        toast(msg, {type:'err'});
+        log('查询出口 IP 失败: ' + msg, 'err');
+      }
+    }
+  }catch(e){
+    EXIT_IP_STATE = {ok:false, ip:'', error:'查询出口 IP 失败: '+e};
+    if(manual){
+      toast('查询出口 IP 失败', {type:'err'});
+      log('查询出口 IP 失败: ' + e, 'err');
+    }
+  }finally{
+    EXIT_IP_LOADING = false;
+    renderExitIp();
+  }
+}
 
 function renderAdb(){
   const s = ADB_STATE;
@@ -1108,21 +1284,43 @@ function renderGrid(){
   prevIds = newIds;
 }
 
+function eventMatches(e){
+  if(EVENT_FILTER !== 'all' && (e.action || '').toUpperCase() !== EVENT_FILTER) return false;
+  if(EVENT_QUERY){
+    const q = EVENT_QUERY.toLowerCase();
+    const hay = [e.host, e.rule, e.error, e.action, e.time].join(' ').toLowerCase();
+    if(!hay.includes(q)) return false;
+  }
+  return true;
+}
 function renderEvents(){
   const body = $('#eventsBody');
   const countEl = $('#eventsCount');
+  const clearBtn = $('#btnClearEvents');
   const events = STATE.proxy_events || [];
-  const filtered = EVENT_FILTER === 'all' ? events : events.filter(e => (e.action || '').toUpperCase() === EVENT_FILTER);
+  const filtered = events.filter(eventMatches);
   countEl.textContent = events.length ? `${filtered.length}/${events.length} 条` : '等待请求';
   countEl.className = 'badge' + (events.some(e => !e.ok) ? ' bad' : '');
-  const sig = JSON.stringify([EVENT_FILTER, events.slice(0,40)]);
+  if(clearBtn) clearBtn.disabled = !events.length;
+  const sig = JSON.stringify([EVENT_FILTER, EVENT_QUERY, events.length, filtered]);
   if(sig === lastEventsSig) return;
   lastEventsSig = sig;
   if(!filtered.length){
-    body.innerHTML = `<div class="events-empty">${events.length ? '当前筛选下没有记录' : '启动应用并访问网页后，这里会实时显示每个请求的分流结果。'}</div>`;
+    body.innerHTML = events.length
+      ? `<div class="events-empty">当前筛选下没有记录<br><button class="btn tiny" id="btnClearEventFilters" type="button">清除筛选</button></div>`
+      : `<div class="events-empty">启动应用并访问网页后，这里会实时显示每个请求的分流结果。</div>`;
+    const resetBtn = $('#btnClearEventFilters');
+    if(resetBtn){
+      resetBtn.onclick = () => {
+        EVENT_QUERY = ''; $('#eventSearch').value = ''; $('#btnEventSearchClear').hidden = true;
+        EVENT_FILTER = 'all';
+        document.querySelectorAll('#eventChips .chip').forEach(c => c.classList.toggle('active', c.dataset.efilter === 'all'));
+        renderEvents();
+      };
+    }
     return;
   }
-  body.innerHTML = filtered.slice(0,40).map(e => {
+  body.innerHTML = filtered.map(e => {
     const act = (e.action || '').toUpperCase();
     const cls = act === 'PROXY' ? 'proxy' : act === 'DIRECT' ? 'direct' : 'bad';
     const label = act === 'PROXY' ? '走代理' : act === 'DIRECT' ? '直连' : '错误';
@@ -1510,6 +1708,22 @@ $('#rulesModal').onclick=e=>{ if(e.target.id==='rulesModal') closeRulesModal(); 
 $('#hopEntryBtn').onclick=openSettings;
 $('#mobileChainSummary').onclick=()=>$('#chainPanel').scrollIntoView({behavior:'smooth',block:'start'});
 $('#hopClashBtn').onclick=()=>{ loadAdbState(); $('#adbPanel').open = true; $('#adbPanel').scrollIntoView({behavior:'smooth',block:'nearest'}); };
+$('#btnRefreshExitIp').onclick=()=>loadExitIp(true);
+$('#exitIpVal').onclick=async ()=>{
+  const ip = EXIT_IP_STATE && EXIT_IP_STATE.ok ? EXIT_IP_STATE.ip : '';
+  if(!ip) return;
+  try{
+    await navigator.clipboard.writeText(ip);
+    toast('已复制出口 IP：'+ip,{type:'ok'});
+  }catch(e){
+    const ta=document.createElement('textarea');
+    ta.value=ip; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast('已复制出口 IP：'+ip,{type:'ok'}); }
+    catch(e2){ toast('复制失败，请手动复制',{type:'err'}); }
+    ta.remove();
+  }
+};
 $('#btnSettingsCancel').onclick=()=>$('#settings').hidden=true;
 $('#btnSettingsSave').onclick=saveSettings;
 $('#settings').onclick=e=>{ if(e.target.id==='settings') $('#settings').hidden=true; };
@@ -1634,6 +1848,38 @@ $('#tabLogs').onclick=()=>{
   applyLogCollapse(false);
   try{ localStorage.setItem(LOG_COLLAPSE_KEY, '0'); }catch(e){}
 };
+$('#btnClearEvents').onclick=async ()=>{
+  const btn = $('#btnClearEvents');
+  btn.disabled = true;
+  try{
+    const r = await api('/api/events/clear',{});
+    if(!r.ok){ toast(r.error||'清空失败',{type:'err'}); return; }
+    if(r.state) STATE = r.state;
+    else if(STATE) STATE.proxy_events = [];
+    renderEvents();
+    toast('已清空分流记录',{type:'ok'});
+  }catch(err){
+    toast('清空分流记录失败',{type:'err'});
+    log('清空分流记录失败: '+err,'err');
+    if(STATE && (STATE.proxy_events||[]).length) btn.disabled = false;
+  }
+};
+$('#eventSearch').addEventListener('input',e=>{
+  EVENT_QUERY=e.target.value.trim();
+  $('#btnEventSearchClear').hidden=!EVENT_QUERY;
+  renderEvents();
+});
+$('#eventSearch').addEventListener('keydown',e=>{
+  if(e.key==='Escape' && EVENT_QUERY){
+    e.stopPropagation();
+    $('#eventSearch').value=''; EVENT_QUERY=''; $('#btnEventSearchClear').hidden=true;
+    renderEvents();
+  }
+});
+$('#btnEventSearchClear').onclick=()=>{
+  $('#eventSearch').value=''; EVENT_QUERY=''; $('#btnEventSearchClear').hidden=true;
+  $('#eventSearch').focus(); renderEvents();
+};
 $('#btnClearLog').onclick=()=>{ LOGS=[]; renderLogs(); };
 $('#btnCopyLog').onclick=async ()=>{
   const text = visibleLogs().slice().reverse().map(l => `[${l.t}] ${l.msg}`).join('\n');
@@ -1727,6 +1973,7 @@ renderLogs();
 log('DroidBridge 已就绪','ok');
 refresh();
 loadAdbState();
+loadExitIp(false);
 setInterval(refresh,8000);
 </script>
 </body>
