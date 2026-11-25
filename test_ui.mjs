@@ -374,9 +374,27 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
   await browser.waitFor("document.readyState === 'complete'");
   await browser.waitFor("document.querySelector('#adbPath')?.textContent.includes('fake')");
 
-  await t.test('renders a main workspace beside a status rail', async () => {
-    assert.equal(await browser.evaluate("!!document.querySelector('#dashboard #appWorkspace')"), true);
-    assert.equal(await browser.evaluate("!!document.querySelector('#dashboard #statusRail')"), true);
+  await t.test('renders sidebar navigation, main workspace, and status rail', async () => {
+    const shell = await browser.evaluate(`(() => ({
+      navCount: document.querySelectorAll('#mainNav .nav-item').length,
+      workspace: !!document.querySelector('#dashboard #appWorkspace'),
+      statusRail: !!document.querySelector('#dashboard #statusRail'),
+      railPanels: document.querySelectorAll('#statusRail > .panel').length,
+      appsVisible: !document.querySelector('#viewApps').hidden,
+      trafficHidden: document.querySelector('#viewTraffic').hidden,
+      rulesHidden: document.querySelector('#viewRules').hidden,
+      settingsHidden: document.querySelector('#viewSettings').hidden,
+    }))()`);
+    assert.deepEqual(shell, {
+      navCount: 4,
+      workspace: true,
+      statusRail: true,
+      railPanels: 1,
+      appsVisible: true,
+      trafficHidden: true,
+      rulesHidden: true,
+      settingsHidden: true,
+    });
   });
 
   await t.test('stacks rows vertically and aligns right action columns when only one row has a note', async () => {
@@ -428,43 +446,34 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
     assert.ok(secondary.deleteRightGap < 2, `delete action is not right-aligned: ${secondary.deleteRightGap}px`);
   });
 
-  await t.test('owns the adb path field inside the ADB panel', async () => {
-    assert.equal(await browser.evaluate("!!document.querySelector('#adbPanel #sAdbPath')"), true);
-    assert.equal(await browser.evaluate("!!document.querySelector('#settings #sAdbPath')"), false);
-  });
-
-  await t.test('keeps connection details inside one collapsed status panel', async () => {
-    const rail = await browser.evaluate(`(() => ({
-      panels: document.querySelectorAll('#statusRail > .panel').length,
-      adbIsDetails: document.querySelector('#adbPanel')?.tagName,
-      proxyIsDetails: document.querySelector('#proxyPanel')?.tagName,
-      adbOpen: document.querySelector('#adbPanel')?.open,
-      proxyOpen: document.querySelector('#proxyPanel')?.open,
+  await t.test('owns the adb path field inside the ADB panel and separates proxy settings', async () => {
+    await browser.evaluate("document.querySelector('#navSettings').click()");
+    await browser.waitFor("document.querySelector('#viewSettings').hidden === false");
+    const panels = await browser.evaluate(`(() => ({
+      adbOwnsPath: !!document.querySelector('#adbPanel #sAdbPath'),
+      proxyOwnsPath: !!document.querySelector('#proxyPanel #sAdbPath'),
       adbBadge: document.querySelector('#adbSummaryBadge')?.textContent,
       proxyBadge: document.querySelector('#proxyPanelBadge')?.textContent,
     }))()`);
-    assert.equal(rail.panels, 1);
-    assert.equal(rail.adbIsDetails, 'DETAILS');
-    assert.equal(rail.proxyIsDetails, 'DETAILS');
-    assert.equal(rail.adbOpen, false);
-    assert.equal(rail.proxyOpen, false);
-    assert.equal(rail.adbBadge, '已连接');
-    assert.equal(rail.proxyBadge, '在线');
+    assert.equal(panels.adbOwnsPath, true);
+    assert.equal(panels.proxyOwnsPath, false);
+    assert.equal(panels.adbBadge, '已连接');
+    assert.match(panels.proxyBadge, /^在线/);
   });
 
   await t.test('uses rules.yaml as the only routing source', async () => {
-    await browser.evaluate("document.querySelector('#btnSettings').click()");
-    await browser.waitFor("document.querySelector('#settings').hidden === false");
+    await browser.evaluate("document.querySelector('#navSettings').click()");
+    await browser.waitFor("document.querySelector('#viewSettings').hidden === false");
     const settings = await browser.evaluate(`(() => ({
       rulesFile: document.querySelector('#sRulesFile').value,
-      help: document.querySelector('#settings .field-help').textContent.trim(),
+      help: document.querySelector('#proxyPanel .field-help').textContent.trim(),
       hasRouterToggle: !!document.querySelector('#sRouterEnabled'),
       hasGlobalBypass: !!document.querySelector('#sBypass'),
       hasAppBypass: !!document.querySelector('#fBypass'),
       hint: document.querySelector('#settingsHint').textContent,
     }))()`);
     assert.equal(settings.rulesFile, 'rules.yaml');
-    assert.match(settings.help, /所有代理请求统一进入分流入口/);
+    assert.match(settings.help, /所有代理请求统一进入本地分流入口/);
     assert.equal(settings.hasRouterToggle, false);
     assert.equal(settings.hasGlobalBypass, false);
     assert.equal(settings.hasAppBypass, false);
@@ -473,12 +482,11 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
       const screenshot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SCREENSHOT, Buffer.from(screenshot.data, 'base64'));
     }
-    await browser.evaluate("document.querySelector('#btnSettingsCancel').click()");
   });
 
   await t.test('proxy settings save without adb configuration', async () => {
-    await browser.evaluate("document.querySelector('#btnSettings').click()");
-    await browser.waitFor("document.querySelector('#settings').hidden === false");
+    await browser.evaluate("document.querySelector('#navSettings').click()");
+    await browser.waitFor("document.querySelector('#viewSettings').hidden === false");
     await browser.evaluate("document.querySelector('#btnSettingsSave').click()");
     const deadline = Date.now() + 5000;
     let saved;
@@ -495,9 +503,8 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
   });
 
   await t.test('saves adb path independently from the ADB panel', async () => {
-    await browser.evaluate("document.querySelector('#adbPanel').open = true");
-    await browser.evaluate("document.querySelector('#btnAdbSettings').click()");
-    await browser.waitFor("document.querySelector('#adbSettings').hidden === false");
+    await browser.evaluate("document.querySelector('#navSettings').click()");
+    await browser.waitFor("document.querySelector('#viewSettings').hidden === false");
     await browser.evaluate(`document.querySelector('#sAdbPath').value = ${JSON.stringify('D:\\tools\\adb.exe')}`);
     await browser.evaluate("document.querySelector('#btnAdbSettingsSave').click()");
     const deadline = Date.now() + 5000;
@@ -522,12 +529,12 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await new Promise((resolve) => server.close(resolve));
   });
 
-  await browser.send('Emulation.setDeviceMetricsOverride', { width: 1120, height: 900, deviceScaleFactor: 1, mobile: false });
+  await browser.send('Emulation.setDeviceMetricsOverride', { width: 1120, height: 780, deviceScaleFactor: 1, mobile: false });
   await browser.send('Page.navigate', { url });
   await browser.waitFor("document.readyState === 'complete'");
   await browser.waitFor("document.querySelectorAll('#appGrid .card').length === 2");
 
-  await t.test('renders a four-hop live chain with statuses', async () => {
+  await t.test('renders a four-hop live chain with statuses and supports keyboard 1-4 view switching', async () => {
     if (process.env.DROIDBRIDGE_UI_SHOT_DESKTOP) {
       const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_DESKTOP, Buffer.from(shot.data, 'base64'));
@@ -566,12 +573,18 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(chain.idleAppsFlow, false);
     assert.equal(chain.idleEntryFlow, true);
     assert.equal(chain.disabledAppsFlow, false);
+
+    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '2', bubbles: true }))");
+    assert.equal(await browser.evaluate("document.querySelector('#viewTraffic').hidden"), false);
+    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))");
+    assert.equal(await browser.evaluate("document.querySelector('#viewApps').hidden"), false);
   });
 
-  await t.test('loads exit IP, location, ISP/ASN from api.ip.sb and updates on manual refresh', async () => {
+  await t.test('loads exit IP, location, ISP/ASN from api.ip.sb and syncs both rail and sidebar dock on refresh', async () => {
     await browser.waitFor("document.querySelector('#exitIpVal')?.textContent === '203.0.113.42'");
     const initial = await browser.evaluate(`(() => ({
       val: document.querySelector('#exitIpVal').textContent,
+      dockVal: document.querySelector('#dockExitIp').textContent,
       disabled: document.querySelector('#exitIpVal').disabled,
       cc: document.querySelector('#exitIpCountryCode').textContent,
       ccHidden: document.querySelector('#exitIpCountryCode').hidden,
@@ -580,6 +593,7 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       meta: document.querySelector('#exitIpMeta').textContent,
     }))()`);
     assert.equal(initial.val, '203.0.113.42');
+    assert.equal(initial.dockVal, '203.0.113.42');
     assert.equal(initial.disabled, false);
     assert.equal(initial.cc, 'JP');
     assert.equal(initial.ccHidden, false);
@@ -592,12 +606,14 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.waitFor("document.querySelector('#exitIpVal')?.textContent === '198.51.100.77'");
     const refreshed = await browser.evaluate(`(() => ({
       val: document.querySelector('#exitIpVal').textContent,
+      dockVal: document.querySelector('#dockExitIp').textContent,
       cc: document.querySelector('#exitIpCountryCode').textContent,
       loc: document.querySelector('#exitIpLoc').textContent,
       isp: document.querySelector('#exitIpIsp').textContent,
       meta: document.querySelector('#exitIpMeta').textContent,
     }))()`);
     assert.equal(refreshed.val, '198.51.100.77');
+    assert.equal(refreshed.dockVal, '198.51.100.77');
     assert.equal(refreshed.cc, 'SG');
     assert.equal(refreshed.loc, 'Singapore');
     assert.equal(refreshed.isp, 'Cloudflare · AS13335');
@@ -660,42 +676,6 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(nativeBrowser.count, 2);
   });
 
-  await t.test('defaults to routing and reveals logs through the diagnostic tabs', async () => {
-    const initial = await browser.evaluate(`(() => ({
-      eventsTabActive: document.querySelector('#tabEvents').classList.contains('active'),
-      eventsVisible: !document.querySelector('#eventsBody').hidden,
-      logsHidden: document.querySelector('#logPanel').hidden,
-      eventToolsVisible: !document.querySelector('#eventChips').hidden,
-      logToolsHidden: document.querySelector('#logTools').hidden,
-    }))()`);
-    assert.deepEqual(initial, {
-      eventsTabActive: true,
-      eventsVisible: true,
-      logsHidden: true,
-      eventToolsVisible: true,
-      logToolsHidden: true,
-    });
-
-    await browser.evaluate("document.querySelector('#tabLogs').click()");
-    const logs = await browser.evaluate(`(() => ({
-      logsVisible: !document.querySelector('#logPanel').hidden,
-      eventsHidden: document.querySelector('#eventsBody').hidden,
-      eventToolsHidden: document.querySelector('#eventChips').hidden,
-      logToolsVisible: !document.querySelector('#logTools').hidden,
-      selected: document.querySelector('#tabLogs').getAttribute('aria-selected'),
-    }))()`);
-    assert.deepEqual(logs, {
-      logsVisible: true,
-      eventsHidden: true,
-      eventToolsHidden: true,
-      logToolsVisible: true,
-      selected: 'true',
-    });
-
-    await browser.evaluate("document.querySelector('#tabEvents').click()");
-    assert.equal(await browser.evaluate("document.querySelector('#logPanel').hidden"), true);
-  });
-
   await t.test('draws the latency sparkline from upstream samples', async () => {
     const initialHistory = await browser.evaluate('LATENCY_HISTORY.slice()');
     assert.deepEqual(initialHistory, [8]);
@@ -736,8 +716,61 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(await browser.evaluate("document.querySelectorAll('#appGrid .card').length"), 2);
   });
 
-  await t.test('routing feed lists decisions, filters by action, and quick-adds rules', async () => {
+  await t.test('traffic view defaults to routing, switches to logs, searches, renders >40 rows, quick-adds and clears', async () => {
+    await browser.evaluate("document.querySelector('#btnJumpTraffic').click()");
+    await browser.waitFor("document.querySelector('#viewTraffic').hidden === false");
+    if (process.env.DROIDBRIDGE_UI_SHOT_TRAFFIC) {
+      const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(process.env.DROIDBRIDGE_UI_SHOT_TRAFFIC, Buffer.from(shot.data, 'base64'));
+    }
+
+    const initial = await browser.evaluate(`(() => ({
+      eventsTabActive: document.querySelector('#tabEvents').classList.contains('active'),
+      eventsVisible: !document.querySelector('#eventsBody').hidden,
+      logsHidden: document.querySelector('#logPanel').hidden,
+      eventToolsVisible: !document.querySelector('#eventChips').hidden,
+      logToolsHidden: document.querySelector('#logTools').hidden,
+    }))()`);
+    assert.deepEqual(initial, {
+      eventsTabActive: true,
+      eventsVisible: true,
+      logsHidden: true,
+      eventToolsVisible: true,
+      logToolsHidden: true,
+    });
+
+    await browser.evaluate("document.querySelector('#tabLogs').click()");
+    const logs = await browser.evaluate(`(() => ({
+      logsVisible: !document.querySelector('#logPanel').hidden,
+      eventsHidden: document.querySelector('#eventsBody').hidden,
+      eventToolsHidden: document.querySelector('#eventChips').hidden,
+      logToolsVisible: !document.querySelector('#logTools').hidden,
+      selected: document.querySelector('#tabLogs').getAttribute('aria-selected'),
+    }))()`);
+    assert.deepEqual(logs, {
+      logsVisible: true,
+      eventsHidden: true,
+      eventToolsHidden: true,
+      logToolsVisible: true,
+      selected: 'true',
+    });
+
+    const wrap = await browser.evaluate(`(() => {
+      log('X'.repeat(400), 'dim');
+      const msg = document.querySelector('#logList .log-row .log-msg');
+      const style = getComputedStyle(msg);
+      return { wordBreak: style.wordBreak, whiteSpace: style.whiteSpace, overflows: msg.scrollWidth > msg.clientWidth + 1 };
+    })()`);
+    assert.equal(wrap.wordBreak, 'break-word');
+    assert.equal(wrap.overflows, false);
+    await browser.evaluate("document.querySelector('#logChips [data-lfilter=\"err\"]').click()");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#logList .log-row.err').length"), 0);
+    await browser.evaluate("document.querySelector('#logChips [data-lfilter=\"all\"]').click()");
+
+    await browser.evaluate("document.querySelector('#tabEvents').click()");
+    assert.equal(await browser.evaluate("document.querySelector('#logPanel').hidden"), true);
     assert.equal(await browser.evaluate("document.querySelectorAll('#eventsBody .event-row').length"), 3);
+
     await browser.evaluate("document.querySelector('#eventChips [data-efilter=\"DIRECT\"]').click()");
     const rows = await browser.evaluate(`(() => ({
       count: document.querySelectorAll('#eventsBody .event-row').length,
@@ -760,7 +793,6 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.deepEqual(quickReq?.body, { host: 'www.baidu.com', action: 'PROXY' });
     await browser.evaluate("document.querySelector('#eventChips [data-efilter=\"all\"]').click()");
 
-    // Verify search filter, >40-row rendering (no 40-item truncation), recoverable empty state, and clear button
     await browser.evaluate(`(() => {
       const input = document.querySelector('#eventSearch');
       input.value = 'xiaohongshu';
@@ -801,36 +833,46 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.evaluate("document.querySelector('#btnClearEvents').click()");
     await browser.waitFor("document.querySelectorAll('#eventsBody .event-row').length === 0");
     assert.equal(await browser.evaluate("document.querySelector('#btnClearEvents').disabled"), true);
-    assert.equal(await browser.evaluate("document.querySelector('#eventsCount').textContent"), '等待请求');
+    assert.equal(await browser.evaluate("document.querySelector('#eventsCount').textContent"), '0');
     assert.ok(requests.some((r) => r.path === '/api/events/clear'));
     state.proxy_events = savedEvents;
     await browser.evaluate(`STATE.proxy_events = ${JSON.stringify(savedEvents)}; renderEvents();`);
   });
 
-  await t.test('rules editor modal tests domains, saves rules, and closes on escape', async () => {
-    await browser.evaluate("document.querySelector('#btnOpenRules').click()");
-    await browser.waitFor("document.querySelector('#rulesModal').hidden === false");
+  await t.test('rules view tests domains and saves rules directly in full workspace', async () => {
+    await browser.evaluate("document.querySelector('#navRules').click()");
+    await browser.waitFor("document.querySelector('#viewRules').hidden === false");
     await browser.waitFor("document.querySelector('#rulesContent').value.includes('MATCH,PROXY')");
     await browser.evaluate("document.querySelector('#ruleTestHost').value = 'https://www.baidu.com/s'");
     await browser.evaluate("document.querySelector('#btnRuleTest').click()");
     await browser.waitFor("document.querySelector('#ruleTestResult').hidden === false");
     const testText = await browser.evaluate("document.querySelector('#ruleTestResult').textContent");
     assert.match(testText, /DOMAIN-SUFFIX,baidu\.com,DIRECT/);
+    if (process.env.DROIDBRIDGE_UI_SHOT_RULES) {
+      const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(process.env.DROIDBRIDGE_UI_SHOT_RULES, Buffer.from(shot.data, 'base64'));
+    }
 
     await browser.evaluate("document.querySelector('#rulesContent').value = 'rules:\\n  - DOMAIN,new.test,DIRECT\\n  - MATCH,PROXY\\n'");
     await browser.evaluate("document.querySelector('#btnRulesSave').click()");
-    await browser.waitFor("document.querySelector('#rulesModal').hidden === true");
-    const saveReq = requests.findLast((r) => r.path === '/api/rules');
+    const deadline = Date.now() + 5000;
+    let saveReq;
+    while (Date.now() < deadline) {
+      saveReq = requests.findLast((r) => r.path === '/api/rules');
+      if (saveReq) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
     assert.ok(saveReq);
     assert.match(saveReq.body.content, /DOMAIN,new\.test,DIRECT/);
-
-    await browser.evaluate("document.querySelector('#btnOpenRules').click()");
-    await browser.waitFor("document.querySelector('#rulesModal').hidden === false");
-    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
-    assert.equal(await browser.evaluate("document.querySelector('#rulesModal').hidden"), true);
   });
 
-  await t.test('multi-device ADB selector passes serial and refreshes proxy chain immediately', async () => {
+  await t.test('multi-device ADB selector in settings view passes serial and refreshes proxy chain immediately', async () => {
+    await browser.evaluate("document.querySelector('#navSettings').click()");
+    await browser.waitFor("document.querySelector('#viewSettings').hidden === false");
+    if (process.env.DROIDBRIDGE_UI_SHOT_SETTINGS) {
+      const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(process.env.DROIDBRIDGE_UI_SHOT_SETTINGS, Buffer.from(shot.data, 'base64'));
+    }
     const beforeStateCount = requests.filter((r) => r.path === '/api/state').length;
     await browser.evaluate(`(() => {
       ADB_STATE = {
@@ -852,7 +894,7 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       sel.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
     assert.equal(await browser.evaluate("document.querySelector('#adbDevicePickerRow').hidden"), false);
-    await browser.evaluate("document.querySelector('#adbPanel').open = true; document.querySelector('#btnAdbForward').click()");
+    await browser.evaluate("document.querySelector('#btnAdbForward').click()");
     const deadline = Date.now() + 5000;
     let fwdReq;
     while (Date.now() < deadline) {
@@ -864,7 +906,9 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.ok(requests.filter((r) => r.path === '/api/state').length > beforeStateCount);
   });
 
-  await t.test('shows Firefox profile tools and tray residency footer when applicable', async () => {
+  await t.test('shows Firefox profile tools and tray residency controls when applicable', async () => {
+    await browser.evaluate("document.querySelector('#navApps').click()");
+    await browser.waitFor("document.querySelector('#viewApps').hidden === false");
     const ffVisible = await browser.evaluate(`(() => {
       openEditor({
         ...STATE.apps[0],
@@ -886,6 +930,7 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       render();
       const result = {
         quitHidden: document.querySelector('#btnQuitService').hidden,
+        settingsQuitHidden: document.querySelector('#btnSettingsQuit').hidden,
         footText: document.querySelector('#footText').textContent,
       };
       STATE.tray_active = false;
@@ -893,10 +938,12 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       return result;
     })()`);
     assert.equal(trayFooter.quitHidden, false);
-    assert.match(trayFooter.footText, /系统托盘/);
+    assert.equal(trayFooter.settingsQuitHidden, false);
+    assert.match(trayFooter.footText, /托盘常驻/);
   });
 
   await t.test('delete asks in-app and undo restores the app', async () => {
+    await browser.evaluate("document.querySelector('#navApps').click()");
     await browser.evaluate("document.querySelector('#appGrid .card [data-act=\"del\"]').click()");
     await browser.waitFor("document.querySelector('#confirm').hidden === false");
     assert.equal(await browser.evaluate("document.querySelector('#confirmTitle').textContent"), '移除应用');
@@ -921,21 +968,8 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(await browser.evaluate("document.querySelector('#editor').hidden"), true);
   });
 
-  await t.test('log level filter and long-line wrapping', async () => {
-    const wrap = await browser.evaluate(`(() => {
-      log('X'.repeat(400), 'dim');
-      const msg = document.querySelector('#logList .log-row .log-msg');
-      const style = getComputedStyle(msg);
-      return { wordBreak: style.wordBreak, whiteSpace: style.whiteSpace, overflows: msg.scrollWidth > msg.clientWidth + 1 };
-    })()`);
-    assert.equal(wrap.wordBreak, 'break-word');
-    assert.equal(wrap.overflows, false);
-    await browser.evaluate("document.querySelector('#logChips [data-lfilter=\"err\"]').click()");
-    assert.equal(await browser.evaluate("document.querySelectorAll('#logList .log-row.err').length"), 0);
-    await browser.evaluate("document.querySelector('#logChips [data-lfilter=\"all\"]').click()");
-  });
-
-  await t.test('mobile layout has no horizontal overflow', async () => {
+  await t.test('mobile layout has no horizontal overflow across views', async () => {
+    await browser.evaluate("document.querySelector('#navApps').click()");
     await browser.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await new Promise((resolve) => setTimeout(resolve, 300));
     const layout = await browser.evaluate(`(() => ({
@@ -943,12 +977,10 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       innerWidth: window.innerWidth,
       chainVisible: !!document.querySelector('#chainPanel').offsetHeight,
       addVisible: !!document.querySelector('#btnAdd').offsetHeight,
-      toggleVisible: !!document.querySelector('#proxyEnabled').offsetHeight,
+      mobileToggleVisible: !!document.querySelector('#mobileProxyEnabled').offsetHeight,
       summaryVisible: !!document.querySelector('#mobileChainSummary').offsetHeight,
       summaryText: document.querySelector('#mobileChainText').textContent,
       summaryMeta: document.querySelector('#mobileChainMeta').textContent,
-      summaryBeforeApps: document.querySelector('#mobileChainSummary').getBoundingClientRect().top < document.querySelector('#appsTitle').getBoundingClientRect().top,
-      settingsSize: (() => { const r = document.querySelector('#btnSettings').getBoundingClientRect(); return { width: r.width, height: r.height }; })(),
       railBelow: document.querySelector('#statusRail').getBoundingClientRect().top > document.querySelector('#appGrid').getBoundingClientRect().bottom - 1,
       singleColCards: (() => { const c = [...document.querySelectorAll('#appGrid .card')]; return c.length < 2 || Math.abs(c[0].getBoundingClientRect().top - c[1].getBoundingClientRect().top) > 1; })(),
     }))()`);
@@ -958,29 +990,20 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.ok(layout.scrollWidth <= layout.innerWidth + 1, `horizontal overflow: ${layout.scrollWidth} > ${layout.innerWidth}`);
     assert.equal(layout.chainVisible, true);
     assert.equal(layout.addVisible, true);
-    assert.equal(layout.toggleVisible, true);
+    assert.equal(layout.mobileToggleVisible, true);
     assert.equal(layout.summaryVisible, true);
     assert.equal(layout.summaryText, '链路畅通');
     assert.match(layout.summaryMeta, /入口 12ms · Clash 8ms/);
-    assert.equal(layout.summaryBeforeApps, true);
-    assert.ok(layout.settingsSize.width > 40, `settings button is too narrow: ${layout.settingsSize.width}px`);
-    assert.ok(layout.settingsSize.height < 45, `settings label wrapped: ${layout.settingsSize.height}px`);
-
-    await browser.evaluate("document.querySelector('#adbPanel').open = true; document.querySelector('#proxyPanel').open = true");
-    const expanded = await browser.evaluate(`(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      innerWidth: window.innerWidth,
-      adbVisible: !!document.querySelector('#adbPath').offsetHeight,
-      proxyVisible: !!document.querySelector('#proxyRouting').offsetHeight,
-      forwardVisible: !!document.querySelector('#btnAdbForward').offsetHeight,
-    }))()`);
-    assert.ok(expanded.scrollWidth <= expanded.innerWidth + 1, `expanded details overflow: ${expanded.scrollWidth} > ${expanded.innerWidth}`);
-    assert.equal(expanded.adbVisible, true);
-    assert.equal(expanded.proxyVisible, true);
-    assert.equal(expanded.forwardVisible, true);
     if (process.env.DROIDBRIDGE_UI_SHOT_MOBILE) {
       const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_MOBILE, Buffer.from(shot.data, 'base64'));
+    }
+
+    for (const navId of ['#navTraffic', '#navRules', '#navSettings']) {
+      await browser.evaluate(`document.querySelector(${JSON.stringify(navId)}).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const overflow = await browser.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1');
+      assert.equal(overflow, true, `mobile horizontal overflow on ${navId}`);
     }
   });
 
