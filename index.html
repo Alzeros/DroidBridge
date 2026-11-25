@@ -1366,6 +1366,23 @@ function render(){
   renderGrid();
   renderEvents();
 }
+function markBackendOffline(){
+  $('#proxyDot').className = 'dot off';
+  $('#proxyText').textContent = 'DroidBridge 服务已停止';
+  const chainBadge = $('#chainBadge');
+  chainBadge.textContent = '已停止';
+  chainBadge.className = 'badge bad';
+  const proxyBadge = $('#proxyPanelBadge');
+  proxyBadge.textContent = '离线';
+  proxyBadge.className = 'badge bad';
+  $('#mobileChainText').textContent = '服务已停止';
+  $('#mobileChainDot').className = 'dot off';
+  setHop('hopEntry', 'bad', '已停止');
+  setHop('hopNet', '', '已断开');
+  $('#hopApps').classList.remove('flow');
+  $('#hopEntry').classList.remove('flow');
+  $('#hopClash').classList.remove('flow');
+}
 async function refresh(){
   try{
     const res = await api('/api/state');
@@ -1379,7 +1396,10 @@ async function refresh(){
       if(LATENCY_HISTORY.length > 30) LATENCY_HISTORY.shift();
     }
     render();
-  }catch(e){ log('后端连接失败: '+e,'err'); }
+  }catch(e){
+    markBackendOffline();
+    log('后端连接失败: '+e,'err');
+  }
 }
 function openEditor(app){
   EDIT_ID = app ? app.id : null;

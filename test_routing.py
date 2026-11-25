@@ -558,6 +558,86 @@ class SingleRouteInjectionTests(unittest.TestCase):
         self.assertFalse(timed_out["ok"])
         self.assertIn("超时", timed_out["error"])
 
+    def test_close_ui_windows_and_tray_quit_close_only_app_windows(self):
+        fake_windows = {
+            101: (True, "Chrome_WidgetWin_1", 4001, droidbridge.UI_WINDOW_TITLE),
+            102: (True, "Chrome_WidgetWin_1", 4002, droidbridge.UI_WINDOW_TITLE + " - Google Chrome"),
+            103: (True, "CabinetWClass", 4003, "DroidBridge"),
+            104: (True, "Chrome_WidgetWin_1", 4010, "127.0.0.1:54665"),
+            105: (False, "Chrome_WidgetWin_1", 4010, droidbridge.UI_WINDOW_TITLE),
+        }
+        closed_hwnds = []
+        still_alive = {101, 102, 103, 104, 105}
+
+        class FakeFunc:
+            def __init__(self, fn):
+                self._fn = fn
+                self.argtypes = None
+                self.restype = None
+
+            def __call__(self, *args):
+                return self._fn(*args)
+
+        class FakeUser32:
+            def __init__(self):
+                self.EnumWindows = FakeFunc(self._enum_windows)
+                self.IsWindowVisible = FakeFunc(lambda h: fake_windows[h][0])
+                self.GetClassNameW = FakeFunc(self._get_class)
+                self.GetWindowThreadProcessId = FakeFunc(self._get_pid)
+                self.GetWindowTextLengthW = FakeFunc(lambda h: len(fake_windows[h][3]))
+                self.GetWindowTextW = FakeFunc(self._get_text)
+                self.PostMessageW = FakeFunc(self._post_msg)
+                self.IsWindow = FakeFunc(lambda h: h in still_alive)
+
+            def _enum_windows(self, cb, lparam):
+                for hwnd in list(fake_windows):
+                    if not cb(hwnd, lparam):
+                        break
+                return 1
+
+            def _get_class(self, hwnd, buf, _size):
+                val = fake_windows[hwnd][1]
+                buf.value = val
+                return len(val)
+
+            def _get_pid(self, hwnd, pid_ptr):
+                pid_ptr._obj.value = fake_windows[hwnd][2]
+                return 1
+
+            def _get_text(self, hwnd, buf, _size):
+                val = fake_windows[hwnd][3]
+                buf.value = val
+                return len(val)
+
+            def _post_msg(self, hwnd, msg, _wparam, _lparam):
+                closed_hwnds.append((hwnd, msg))
+                still_alive.discard(hwnd)
+                return 1
+
+        u32 = FakeUser32()
+        with (
+            patch.object(droidbridge, "_ui_browser_pids", {4010}),
+            patch.object(droidbridge, "process_map", return_value={}),
+            patch.object(droidbridge, "_ui_browser_process_ids", return_value={4010}),
+        ):
+            count = droidbridge.close_ui_windows(wait_timeout=0.1, user32=u32)
+
+        self.assertEqual(count, 2)
+        self.assertEqual(closed_hwnds, [
+            (101, droidbridge.TrayController.WM_CLOSE),
+            (104, droidbridge.TrayController.WM_CLOSE),
+        ])
+
+        calls = []
+        with (
+            patch.object(droidbridge, "cancel_pending_quit", side_effect=lambda: calls.append("cancel")),
+            patch.object(droidbridge, "close_ui_windows", side_effect=lambda: calls.append("close_ui")),
+            patch.object(droidbridge, "stop_tray", side_effect=lambda: calls.append("stop_tray")),
+            patch.object(droidbridge, "_do_shutdown", side_effect=lambda: calls.append("shutdown")),
+        ):
+            droidbridge._quit_from_tray()
+        self.assertEqual(calls, ["cancel", "close_ui", "stop_tray", "shutdown"])
+
 
 if __name__ == "__main__":
     unittest.main()

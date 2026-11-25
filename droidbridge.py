@@ -1786,11 +1786,19 @@ def extract_exe_icon_png(exe_path: str, size: int = 64) -> bytes | None:
 
 # ------------------------------------------------------------ quit control ----
 
+_shutdown_lock = threading.Lock()
+
+
 def _do_shutdown():
-    if _server:
-        _server.shutdown()
-    if _proxy_server:
-        _proxy_server.shutdown()
+    with _shutdown_lock:
+        if _server:
+            _server.shutdown()
+        stop_proxy_server()
+
+
+def _force_shutdown():
+    close_ui_windows()
+    _do_shutdown()
 
 
 def cancel_pending_quit():
@@ -2721,7 +2729,7 @@ class Handler(BaseHTTPRequestHandler):
             if force:
                 cancel_pending_quit()
                 stop_tray()
-                timer = threading.Timer(0.15, _do_shutdown)
+                timer = threading.Timer(0.15, _force_shutdown)
                 timer.daemon = True
                 timer.start()
                 self.send_json({"ok": True, "quitting": True})
@@ -3046,47 +3054,141 @@ def open_window(url):
     return "default browser"
 
 
-def focus_existing_window() -> bool:
-    if os.name != "nt":
-        return False
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
-    user32.EnumWindows.restype = wintypes.BOOL
-    user32.IsWindowVisible.argtypes = [wintypes.HWND]
-    user32.IsWindowVisible.restype = wintypes.BOOL
-    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
-    user32.GetWindowTextLengthW.restype = ctypes.c_int
-    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
-    user32.GetWindowTextW.restype = ctypes.c_int
-    user32.IsIconic.argtypes = [wintypes.HWND]
-    user32.IsIconic.restype = wintypes.BOOL
-    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
-    user32.ShowWindow.restype = wintypes.BOOL
-    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
-    user32.SetForegroundWindow.restype = wintypes.BOOL
+UI_WINDOW_TITLE = "DroidBridge · 进程级网络应用台"
+PROCESS_TERMINATE = 0x0001
 
-    found = [False]
+
+def _find_ui_windows(user32=None) -> list[tuple[int, int]]:
+    """Return [(hwnd, pid), ...] for visible/minimized DroidBridge --app windows."""
+    if os.name != "nt":
+        return []
+    u32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    u32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+    u32.EnumWindows.restype = wintypes.BOOL
+    u32.IsWindowVisible.argtypes = [wintypes.HWND]
+    u32.IsWindowVisible.restype = wintypes.BOOL
+    u32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    u32.GetWindowTextLengthW.restype = ctypes.c_int
+    u32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    u32.GetWindowTextW.restype = ctypes.c_int
+    u32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    u32.GetClassNameW.restype = ctypes.c_int
+    u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    u32.GetWindowThreadProcessId.restype = wintypes.DWORD
+
+    invalidate_process_cache()
+    try:
+        process_map()
+    except Exception:
+        pass
+    ui_pids = _ui_browser_process_ids()
+    matched: list[tuple[int, int]] = []
 
     def _enum_cb(hwnd, _lparam):
-        if not user32.IsWindowVisible(hwnd):
+        if not u32.IsWindowVisible(hwnd):
             return True
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length <= 0:
+        cls_buf = ctypes.create_unicode_buffer(128)
+        u32.GetClassNameW(hwnd, cls_buf, 128)
+        cls_name = cls_buf.value
+        if not cls_name.startswith("Chrome_WidgetWin_"):
             return True
-        buf = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, buf, length + 1)
-        if buf.value.startswith("DroidBridge"):
-            if user32.IsIconic(hwnd):
-                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-            user32.SetForegroundWindow(hwnd)
-            found[0] = True
-            return False
+
+        pid_val = wintypes.DWORD(0)
+        u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_val))
+        pid = int(pid_val.value)
+
+        length = u32.GetWindowTextLengthW(hwnd)
+        title = ""
+        if length > 0:
+            buf = ctypes.create_unicode_buffer(length + 1)
+            u32.GetWindowTextW(hwnd, buf, length + 1)
+            title = buf.value
+
+        # Only match our isolated --app window:
+        # 1) Exact --app title (regular tabbed Chrome/Edge appends " - Google Chrome" / " - Microsoft Edge")
+        # 2) Any titled Chrome_WidgetWin_* owned by our dedicated --user-data-dir=droidbridge_profile process tree
+        if title == UI_WINDOW_TITLE or (pid in ui_pids and bool(title)):
+            matched.append((int(hwnd), pid))
         return True
 
     cb = WNDENUMPROC(_enum_cb)
-    user32.EnumWindows(cb, 0)
-    return found[0]
+    u32.EnumWindows(cb, 0)
+    return matched
+
+
+def _terminate_pid(pid: int) -> bool:
+    if os.name != "nt" or _kernel32 is None or pid <= 0:
+        return False
+    _kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    _kernel32.TerminateProcess.restype = wintypes.BOOL
+    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _kernel32.CloseHandle.restype = wintypes.BOOL
+    handle = _kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+    if not handle:
+        return False
+    try:
+        return bool(_kernel32.TerminateProcess(handle, 0))
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
+def close_ui_windows(wait_timeout: float = 1.0, user32=None) -> int:
+    """Close DroidBridge's dedicated --app UI window(s) and remove their taskbar button."""
+    if os.name != "nt":
+        _ui_browser_pids.clear()
+        return 0
+    u32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
+    u32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    u32.PostMessageW.restype = wintypes.BOOL
+    u32.IsWindow.argtypes = [wintypes.HWND]
+    u32.IsWindow.restype = wintypes.BOOL
+
+    windows = _find_ui_windows(user32=u32)
+    tracked_pids = _ui_browser_process_ids()
+    for hwnd, _pid in windows:
+        u32.PostMessageW(hwnd, TrayController.WM_CLOSE, 0, 0)
+
+    if windows and wait_timeout > 0:
+        deadline = time.time() + wait_timeout
+        while time.time() < deadline:
+            if not any(u32.IsWindow(hwnd) for hwnd, _pid in windows):
+                break
+            time.sleep(0.05)
+
+        still_open_pids = {
+            pid for hwnd, pid in windows
+            if u32.IsWindow(hwnd) and pid in tracked_pids
+        }
+        for pid in still_open_pids:
+            _terminate_pid(pid)
+
+    _ui_browser_pids.clear()
+    invalidate_process_cache()
+    return len(windows)
+
+
+def focus_existing_window(user32=None) -> bool:
+    if os.name != "nt":
+        return False
+    u32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
+    u32.IsIconic.argtypes = [wintypes.HWND]
+    u32.IsIconic.restype = wintypes.BOOL
+    u32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    u32.ShowWindow.restype = wintypes.BOOL
+    u32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    u32.SetForegroundWindow.restype = wintypes.BOOL
+
+    windows = _find_ui_windows(user32=u32)
+    if not windows:
+        return False
+    hwnd, _pid = windows[0]
+    if u32.IsIconic(hwnd):
+        u32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    u32.SetForegroundWindow(hwnd)
+    return True
 
 
 def _tray_tooltip_text(cfg=None) -> str:
@@ -3122,6 +3224,7 @@ def _toggle_tray_proxy():
 
 def _quit_from_tray():
     cancel_pending_quit()
+    close_ui_windows()
     stop_tray()
     _do_shutdown()
 
