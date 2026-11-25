@@ -193,6 +193,184 @@ class RoutingTests(unittest.TestCase):
             with self.subTest(host=host):
                 self.assertEqual(table.action_for(host), expected)
 
+    def test_route_table_cache_hits_and_invalidates_on_change(self):
+        with patch.object(droidbridge.RouteTable, "load", wraps=droidbridge.RouteTable.load) as spy:
+            self.assertEqual(self.post("127.0.0.1"), (200, b"prompt"))
+            self.assertEqual(self.post("127.0.0.1"), (200, b"prompt"))
+            self.assertEqual(spy.call_count, 1)
+            self.assertEqual(len(self.origin.requests), 2)
+
+            self.write_rules("MATCH,PROXY")
+            self.assertEqual(self.post("127.0.0.1"), (200, b"prompt"))
+            self.assertEqual(spy.call_count, 2)
+            self.assertEqual(len(self.origin.requests), 2)
+            self.assertEqual(len(self.upstream.requests), 1)
+
+    def test_chunked_post_forwarded_on_direct_and_proxy(self):
+        def _send_chunked(host):
+            target = f"http://{host}:{self.origin_port}/chunked"
+            raw_req = (
+                f"POST {target} HTTP/1.1\r\n"
+                f"Host: {host}:{self.origin_port}\r\n"
+                "Transfer-Encoding: chunked\r\n"
+                "Connection: close\r\n\r\n"
+                "5;ext=1\r\nhello\r\n"
+                "6\r\n world\r\n"
+                "0\r\nX-Trailer: ignored\r\n\r\n"
+            ).encode("ascii")
+            with socket.create_connection(self.router.server_address, timeout=3) as sock:
+                sock.sendall(raw_req)
+                chunks = []
+                while True:
+                    data = sock.recv(4096)
+                    if not data:
+                        break
+                    chunks.append(data)
+            return b"".join(chunks)
+
+        direct_resp = _send_chunked("127.0.0.1")
+        proxy_resp = _send_chunked("localhost")
+        self.assertTrue(direct_resp.endswith(b"\r\n\r\nhello world"), direct_resp)
+        self.assertTrue(proxy_resp.endswith(b"\r\n\r\nhello world"), proxy_resp)
+        self.assertEqual(self.origin.requests, [("POST", "/chunked", b"hello world")])
+        self.assertEqual(self.upstream.requests, [
+            ("POST", f"http://localhost:{self.origin_port}/chunked", b"hello world")
+        ])
+
+    def test_detailed_error_recorded_for_upstream_failures(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as dead_sock:
+            dead_sock.bind(("127.0.0.1", 0))
+            dead_port = dead_sock.getsockname()[1]
+
+        self.write_rules(
+            f"upstream: http://127.0.0.1:{dead_port}",
+        )
+        # Re-write with rules block including upstream
+        self.rules_path.write_text(
+            f"upstream: http://127.0.0.1:{dead_port}\nrules:\n  - MATCH,PROXY\n",
+            encoding="utf-8",
+        )
+        with droidbridge._proxy_events_lock:
+            droidbridge._proxy_events.clear()
+
+        with socket.create_connection(self.router.server_address, timeout=3) as client:
+            client.sendall(b"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n")
+            resp = client.recv(4096).decode("utf-8", errors="replace")
+        self.assertIn("502", resp)
+        with droidbridge._proxy_events_lock:
+            latest = droidbridge._proxy_events[0]
+        self.assertFalse(latest["ok"])
+        self.assertIn("上游代理拒绝连接", latest["error"])
+
+    def test_rules_helpers_extract_save_and_quick_add(self):
+        self.assertEqual(droidbridge.extract_test_host("https://API.cmaiot.cn:8443/v1?a=1"), "api.cmaiot.cn")
+        self.assertEqual(droidbridge.extract_test_host("[::1]:8080"), "::1")
+
+        cfg = droidbridge.load_config()
+        table = droidbridge.RouteTable.load_from_text("rules:\n  - DOMAIN,a.test,DIRECT\n  - MATCH,PROXY\n", cfg)
+        self.assertFalse(table.error)
+        rule, idx = table.match_detail("a.test")
+        self.assertEqual((rule.action, idx), ("DIRECT", 1))
+
+        bad_table = droidbridge.save_rules_text(cfg, "rules:\n  - GEOIP,CN,DIRECT\n")
+        self.assertTrue(bad_table.error)
+        # Disk rules remain untouched and valid
+        self.assertFalse(droidbridge.RouteTable.load(cfg).error)
+
+        res1 = droidbridge.quick_add_rule(cfg, "foo.example:443", "DIRECT")
+        self.assertTrue(res1["ok"] and res1["changed"] and not res1["updated"])
+        self.assertEqual(res1["rule"], "DOMAIN,foo.example,DIRECT")
+        self.assertEqual(droidbridge.RouteTable.load(cfg).action_for("foo.example"), "DIRECT")
+
+        res_dup = droidbridge.quick_add_rule(cfg, "foo.example", "DIRECT")
+        self.assertTrue(res_dup["ok"] and not res_dup["changed"])
+
+        res_upd = droidbridge.quick_add_rule(cfg, "foo.example", "PROXY")
+        self.assertTrue(res_upd["ok"] and res_upd["changed"] and res_upd["updated"])
+        self.assertEqual(droidbridge.RouteTable.load(cfg).action_for("foo.example"), "PROXY")
+
+        res_ip = droidbridge.quick_add_rule(cfg, "1.2.3.4", "DIRECT")
+        self.assertEqual(res_ip["rule"], "IP-CIDR,1.2.3.4/32,DIRECT")
+
+    def test_firefox_profile_discovery_and_sync(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            appdata = base / "AppData"
+            ff_root = appdata / "Mozilla" / "Firefox"
+            rel_prof = ff_root / "Profiles" / "rel.default-release"
+            old_prof = ff_root / "Profiles" / "old.default"
+            (rel_prof / "extensions").mkdir(parents=True)
+            old_prof.mkdir(parents=True)
+
+            (ff_root / "profiles.ini").write_text(
+                "[Install123]\nDefault=Profiles/rel.default-release\n\n"
+                "[Profile0]\nName=default\nIsRelative=1\nPath=Profiles/old.default\nDefault=1\n",
+                encoding="utf-8",
+            )
+            discovered = droidbridge.discover_firefox_default_profile(
+                r"C:\Program Files\Mozilla Firefox\firefox.exe", appdata_dir=str(appdata)
+            )
+            self.assertEqual(discovered, rel_prof)
+
+            (rel_prof / "cookies.sqlite").write_bytes(b"sqlite")
+            (rel_prof / "extensions" / "ext@example.xpi").write_bytes(b"xpi")
+            (rel_prof / "addonStartup.json.lz4").write_bytes(b"cache")
+            (rel_prof / "parent.lock").write_bytes(b"")
+            src_escaped = str(rel_prof).replace("\\", "\\\\")
+            (rel_prof / "pkcs11.txt").write_text(f"configdir='sql:{src_escaped}'\n", encoding="utf-8")
+            (rel_prof / "extensions.json").write_text(
+                json.dumps({"addons": [{"path": str(rel_prof / "extensions" / "ext@example.xpi"), "rootURI": rel_prof.as_uri()}]}),
+                encoding="utf-8",
+            )
+
+            profiles_dir = base / "profiles"
+            cfg = {
+                "proxy": {"host": "127.0.0.1", "port": 5038, "listen_host": "127.0.0.1", "listen_port": 10086, "enabled": True},
+                "apps": [],
+            }
+            app = {"id": "ff_1", "name": "FireFox", "exe": r"C:\Program Files\Mozilla Firefox\firefox.exe", "args": "", "kind": "firefox"}
+            with patch.object(droidbridge, "PROFILES_DIR", profiles_dir):
+                res = droidbridge.sync_firefox_profile(app, cfg, source_dir=rel_prof)
+                self.assertTrue(res["ok"], res)
+                self.assertEqual(res["extensions"], 1)
+                dst = profiles_dir / "ff_1"
+                self.assertTrue((dst / "cookies.sqlite").is_file())
+                self.assertFalse((dst / "addonStartup.json.lz4").exists())
+                self.assertFalse((dst / "parent.lock").exists())
+                self.assertIn(str(dst).replace("\\", "\\\\"), (dst / "pkcs11.txt").read_text(encoding="utf-8"))
+                self.assertNotIn("rel.default-release", (dst / "extensions.json").read_text(encoding="utf-8"))
+                self.assertIn("10086", (dst / "user.js").read_text(encoding="utf-8"))
+
+                with patch.object(droidbridge, "is_firefox_profile_locked", return_value=True):
+                    blocked = droidbridge.sync_firefox_profile(app, cfg, source_dir=rel_prof)
+                    self.assertFalse(blocked["ok"])
+
+    def test_tray_controller_message_loop_and_cleanup(self):
+        if droidbridge.os.name != "nt":
+            self.skipTest("Windows-only tray test")
+        calls = []
+        opened = threading.Event()
+        toggled = threading.Event()
+        tray = droidbridge.TrayController(
+            on_open=lambda: (calls.append("open"), opened.set()),
+            on_toggle_proxy=lambda: (calls.append("toggle"), toggled.set()),
+            on_quit=lambda: calls.append("quit"),
+            is_proxy_enabled=lambda: True,
+            tooltip="DroidBridge Test",
+        )
+        with patch.object(droidbridge._shell32, "Shell_NotifyIconW", return_value=1):
+            started = tray.start(timeout=2.0)
+            self.assertTrue(started)
+            self.assertTrue(tray.active)
+            tray.update_tooltip("DroidBridge Updated")
+            droidbridge._user32.PostMessageW(tray._hwnd, tray.WM_COMMAND, tray.CMD_OPEN, 0)
+            droidbridge._user32.PostMessageW(tray._hwnd, tray.WM_COMMAND, tray.CMD_TOGGLE_PROXY, 0)
+            self.assertTrue(opened.wait(timeout=2.0))
+            self.assertTrue(toggled.wait(timeout=2.0))
+            tray.stop()
+        self.assertFalse(tray.active)
+        self.assertEqual(calls, ["open", "toggle"])
+
 
 class SingleRouteInjectionTests(unittest.TestCase):
     def config(self):

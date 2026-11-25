@@ -13,6 +13,7 @@ Layers:
 """
 from __future__ import annotations
 
+import configparser
 import ctypes
 import csv
 import io
@@ -52,6 +53,7 @@ MAX_BODY_BYTES = 1_048_576
 
 DEFAULT_CONFIG = {
     "adb_path": "",
+    "adb_serial": "",
     "proxy": {
         "host": "127.0.0.1",
         "port": 5038,
@@ -131,6 +133,9 @@ _proxy_thread = None
 _proxy_events: list[dict] = []
 _proxy_events_lock = threading.Lock()
 _proxy_error = ""
+_last_proxy_activity = 0.0
+_tray = None
+_ui_url = ""
 
 
 # ---------------------------------------------------------------- config ----
@@ -169,6 +174,7 @@ def save_config(cfg):
         with tmp.open("w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
         tmp.replace(CONFIG_PATH)
+    _invalidate_proxy_route_cache()
 
 
 def rules_path(cfg):
@@ -278,19 +284,19 @@ class RouteTable:
         return "http://%s:%s" % self.upstream
 
     @classmethod
-    def load(cls, cfg):
+    def _default_upstream(cls, cfg):
         proxy = cfg.get("proxy", {})
         try:
             upstream_port = int(proxy.get("port") or 5038)
         except (TypeError, ValueError, OverflowError):
             upstream_port = 5038
-        upstream = (str(proxy.get("host") or "127.0.0.1"), upstream_port)
-        path = rules_path(cfg)
-        if not path.is_file():
-            return cls(upstream, [], str(path), "规则文件不存在")
+        return (str(proxy.get("host") or "127.0.0.1"), upstream_port)
 
+    @classmethod
+    def load_from_text(cls, text, cfg, source=""):
+        proxy = cfg.get("proxy", {})
+        upstream = cls._default_upstream(cfg)
         try:
-            text = path.read_text(encoding="utf-8-sig")
             yaml_upstream = None
             rules = []
             in_rules = False
@@ -372,20 +378,175 @@ class RouteTable:
                 raise ValueError("rules 最后一条必须是 MATCH")
             if any(rule.kind == "MATCH" for rule in rules[:-1]):
                 raise ValueError("MATCH 必须是最后一条规则")
-            return cls(upstream, rules, str(path))
+            return cls(upstream, rules, source)
         except (OSError, ValueError, TypeError, OverflowError) as exc:
-            return cls(upstream, [], str(path), "规则加载失败：%s" % exc)
+            return cls(upstream, [], source, "规则加载失败：%s" % exc)
 
-    def rule_for(self, host):
-        for rule in self.rules:
+    @classmethod
+    def load(cls, cfg):
+        upstream = cls._default_upstream(cfg)
+        path = rules_path(cfg)
+        if not path.is_file():
+            return cls(upstream, [], str(path), "规则文件不存在")
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except OSError as exc:
+            return cls(upstream, [], str(path), "规则加载失败：%s" % exc)
+        return cls.load_from_text(text, cfg, str(path))
+
+    def match_detail(self, host):
+        for idx, rule in enumerate(self.rules, 1):
             if rule.matches(host):
-                return rule
+                return rule, idx
         if self.error:
             raise ValueError(self.error)
         raise ValueError("没有匹配的分流规则")
 
+    def rule_for(self, host):
+        return self.match_detail(host)[0]
+
     def action_for(self, host):
         return self.rule_for(host).action
+
+
+def extract_test_host(raw: str) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    if "://" in text:
+        parsed = urlsplit(text)
+        if parsed.hostname:
+            return _normalize_target_host(parsed.hostname)
+    try:
+        host, _ = _host_port(text, 80)
+        return _normalize_target_host(host)
+    except ValueError:
+        return _normalize_target_host(text)
+
+
+def save_rules_text(cfg: dict, content: str) -> RouteTable:
+    path = rules_path(cfg)
+    table = RouteTable.load_from_text(content, cfg, str(path))
+    if table.error:
+        return table
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    if normalized and not normalized.endswith("\n"):
+        normalized += "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(normalized, encoding="utf-8")
+    tmp.replace(path)
+    _invalidate_proxy_route_cache()
+    return table
+
+
+def quick_add_rule(cfg: dict, host: str, action: str, kind: str = "") -> dict:
+    target_action = str(action or "").strip().upper()
+    if target_action not in RouteTable.SUPPORTED_ACTIONS:
+        raise ValueError("不支持的规则动作：%s" % target_action)
+    target = extract_test_host(host)
+    if not target:
+        raise ValueError("目标主机不能为空")
+
+    req_kind = str(kind or "").strip().upper()
+    if req_kind:
+        if req_kind not in (RouteTable.SUPPORTED_KINDS - {"MATCH"}):
+            raise ValueError("不支持的规则类型：%s" % req_kind)
+        if req_kind == "IP-CIDR":
+            target = str(ipaddress.ip_network(target, strict=False))
+        rule_kind, rule_value = req_kind, target
+    else:
+        try:
+            ip = ipaddress.ip_address(target)
+            rule_kind = "IP-CIDR"
+            rule_value = f"{ip}/32" if ip.version == 4 else f"{ip}/128"
+        except ValueError:
+            rule_kind, rule_value = "DOMAIN", target
+
+    candidate = RouteRule(rule_kind, rule_value, target_action)
+    ensure_rules_file(cfg)
+    path = rules_path(cfg)
+    if not path.is_file():
+        return {"ok": False, "error": "规则文件不存在"}
+
+    raw_text = path.read_text(encoding="utf-8-sig")
+    lines = raw_text.splitlines()
+    rules_header_idx = None
+    in_rules = False
+    first_match_idx = None
+    first_match_action = None
+    first_match_indent = "  "
+    duplicate_indices = set()
+    rule_indent = "  "
+
+    for idx, raw_line in enumerate(lines):
+        stripped = _strip_yaml_comment(raw_line).strip()
+        if not stripped:
+            continue
+        if stripped == "rules:":
+            rules_header_idx = idx
+            in_rules = True
+            continue
+        if in_rules and stripped.startswith("-"):
+            leading = raw_line[: len(raw_line) - len(raw_line.lstrip())]
+            if leading:
+                rule_indent = leading
+            fields = _split_rule_fields(stripped[1:].strip())
+            if len(fields) == 1:
+                fields = _split_rule_fields(fields[0])
+            if len(fields) == 2:
+                fields = [fields[0], "", fields[1]]
+            if len(fields) == 3:
+                rk, rv, ra = (f.strip() for f in fields)
+                rk, ra = rk.upper(), ra.upper()
+                try:
+                    existing = (
+                        RouteRule(rk, rv, ra)
+                        if rk in RouteTable.SUPPORTED_KINDS and ra in RouteTable.SUPPORTED_ACTIONS
+                        else None
+                    )
+                except ValueError:
+                    existing = None
+                if existing and existing.kind == candidate.kind and existing.value == candidate.value:
+                    if first_match_idx is None:
+                        first_match_idx = idx
+                        first_match_action = existing.action
+                        first_match_indent = leading or rule_indent
+                    else:
+                        duplicate_indices.add(idx)
+
+    if rules_header_idx is None:
+        return {"ok": False, "error": "规则文件缺少 rules: 段落"}
+
+    if first_match_idx is not None:
+        if first_match_action == candidate.action and not duplicate_indices:
+            return {
+                "ok": True,
+                "rule": candidate.label,
+                "changed": False,
+                "updated": False,
+                "message": "规则已存在：%s" % candidate.label,
+            }
+        lines[first_match_idx] = f"{first_match_indent}- {candidate.label}"
+        new_lines = [ln for i, ln in enumerate(lines) if i not in duplicate_indices]
+        updated = True
+    else:
+        new_lines = list(lines)
+        new_lines.insert(rules_header_idx + 1, f"{rule_indent}- {candidate.label}")
+        updated = False
+
+    new_text = "\n".join(new_lines) + "\n"
+    table = save_rules_text(cfg, new_text)
+    if table.error:
+        return {"ok": False, "error": table.error}
+    return {
+        "ok": True,
+        "rule": candidate.label,
+        "changed": True,
+        "updated": updated,
+        "rule_count": len(table.rules),
+        "message": ("已更新规则：%s" if updated else "已添加规则：%s") % candidate.label,
+    }
 
 
 def _record_proxy_event(host, action, ok=True, error="", rule=""):
@@ -767,6 +928,209 @@ def write_firefox_user_js(profile_dir: Path, content: str):
     tmp.replace(profile_dir / "user.js")
 
 
+def _firefox_appdata_root(exe_path: str = "", appdata_dir: str = "") -> Path | None:
+    base = appdata_dir or os.environ.get("APPDATA", "")
+    if not base:
+        return None
+    stem = Path(exe_path).stem.lower() if exe_path else ""
+    rel_map = {
+        "librewolf": ("LibreWolf",),
+        "waterfox": ("Waterfox",),
+        "floorp": ("Floorp",),
+        "zen": ("zen",),
+        "thunderbird": ("Thunderbird",),
+        "seamonkey": ("Mozilla", "SeaMonkey"),
+    }
+    return Path(base).joinpath(*rel_map.get(stem, ("Mozilla", "Firefox")))
+
+
+def discover_firefox_default_profile(exe_path: str = "", appdata_dir: str = "") -> Path | None:
+    root = _firefox_appdata_root(exe_path, appdata_dir=appdata_dir)
+    if root is None or not root.is_dir():
+        return None
+
+    candidates: list[Path] = []
+    profiles_ini = root / "profiles.ini"
+    installs_ini = root / "installs.ini"
+
+    def _resolve_entry(raw_path: str, is_relative: str = "1") -> Path | None:
+        raw = str(raw_path or "").strip()
+        if not raw:
+            return None
+        p = Path(raw)
+        if str(is_relative or "1").strip() == "0" or p.is_absolute():
+            return p
+        return root / raw
+
+    def _read_ini(path: Path):
+        parser = configparser.RawConfigParser()
+        parser.optionxform = str
+        if path.is_file():
+            try:
+                parser.read(path, encoding="utf-8-sig")
+            except (OSError, configparser.Error):
+                pass
+        return parser
+
+    p_ini = _read_ini(profiles_ini)
+    i_ini = _read_ini(installs_ini)
+
+    for sec in p_ini.sections():
+        if sec.startswith("Install") and p_ini.has_option(sec, "Default"):
+            cand = _resolve_entry(p_ini.get(sec, "Default"), "1")
+            if cand is not None:
+                candidates.append(cand)
+
+    for sec in i_ini.sections():
+        if i_ini.has_option(sec, "Default"):
+            cand = _resolve_entry(i_ini.get(sec, "Default"), "1")
+            if cand is not None:
+                candidates.append(cand)
+
+    for sec in p_ini.sections():
+        if sec.startswith("Profile") and p_ini.get(sec, "Default", fallback="").strip() == "1":
+            cand = _resolve_entry(
+                p_ini.get(sec, "Path", fallback=""),
+                p_ini.get(sec, "IsRelative", fallback="1"),
+            )
+            if cand is not None:
+                candidates.append(cand)
+
+    profiles_sub = root / "Profiles"
+    if profiles_sub.is_dir():
+        globbed = [
+            p for p in profiles_sub.iterdir()
+            if p.is_dir() and (p.name.endswith(".default-release") or p.name.endswith(".default"))
+        ]
+        def _profile_mtime(p: Path) -> float:
+            for marker in ("places.sqlite", "prefs.js"):
+                f = p / marker
+                if f.is_file():
+                    try:
+                        return f.stat().st_mtime
+                    except OSError:
+                        pass
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return 0.0
+        globbed.sort(key=_profile_mtime, reverse=True)
+        candidates.extend(globbed)
+
+    for cand in candidates:
+        if cand.is_dir():
+            return cand
+    return None
+
+
+def sync_firefox_profile(app: dict, cfg: dict, source_dir: Path | None = None) -> dict:
+    if effective_kind(app) != "firefox":
+        return {"ok": False, "error": "该应用不是 Firefox / Gecko 类型"}
+    if _has_firefox_profile_arg(split_args(app.get("args", ""))):
+        return {"ok": False, "error": "已通过启动参数自定义 -profile，无法自动同步"}
+
+    src = source_dir if source_dir is not None else discover_firefox_default_profile(expand(app.get("exe", "")))
+    if src is None or not src.is_dir():
+        return {"ok": False, "error": "未找到本机默认 Firefox 配置目录"}
+
+    dst = firefox_profile_dir(app)
+    try:
+        if src.resolve() == dst.resolve():
+            return {"ok": False, "error": "源配置目录与目标配置目录相同"}
+    except OSError:
+        pass
+
+    if is_firefox_profile_locked(dst):
+        return {"ok": False, "error": "代理版 Firefox 正在运行，请先关闭通过 DroidBridge 打开的窗口后再同步"}
+    if is_firefox_profile_locked(src):
+        return {"ok": False, "error": "常规 Firefox 正在运行，请先关闭日常 Firefox 窗口后再同步，避免数据损坏"}
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    staging = dst.parent / f"{dst.name}.sync_tmp"
+    backup = dst.parent / f"{dst.name}.sync_bak"
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)
+    if backup.exists():
+        shutil.rmtree(backup, ignore_errors=True)
+
+    ignore_names = {
+        "parent.lock",
+        "lock",
+        ".parentlock",
+        "crashes",
+        "minidumps",
+        "saved-telemetry-pings",
+        "shader-cache",
+        "addonStartup.json.lz4",
+        "compatibility.ini",
+    }
+
+    def _ignore(dirpath, names):
+        if Path(dirpath) == src:
+            return [n for n in names if n in ignore_names]
+        return []
+
+    try:
+        shutil.copytree(src, staging, ignore=_ignore)
+        src_str = str(src)
+        dst_str = str(dst)
+        src_escaped = src_str.replace("\\", "\\\\")
+        dst_escaped = dst_str.replace("\\", "\\\\")
+        src_uri = src.as_uri()
+        dst_uri = dst.as_uri()
+
+        for fname in ("pkcs11.txt", "extensions.json"):
+            fpath = staging / fname
+            if fpath.is_file():
+                text = fpath.read_text(encoding="utf-8", errors="replace")
+                updated_text = (
+                    text.replace(src_escaped, dst_escaped)
+                    .replace(src_str, dst_str)
+                    .replace(src_uri, dst_uri)
+                )
+                if updated_text != text:
+                    fpath.write_text(updated_text, encoding="utf-8")
+
+        user_js, prefs_summary = build_firefox_user_js(cfg)
+        write_firefox_user_js(staging, user_js)
+
+        if dst.exists():
+            dst.replace(backup)
+        staging.replace(dst)
+        if backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+    except Exception as exc:
+        if backup.exists() and not dst.exists():
+            try:
+                backup.replace(dst)
+            except OSError:
+                pass
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        return {"ok": False, "error": "同步配置失败：%s" % exc}
+
+    ext_dir = dst / "extensions"
+    ext_count = len(list(ext_dir.iterdir())) if ext_dir.is_dir() else 0
+    return {
+        "ok": True,
+        "source": str(src),
+        "target": str(dst),
+        "extensions": ext_count,
+        "prefs": prefs_summary,
+        "message": f"已同步本机配置（含 {ext_count} 个扩展）",
+    }
+
+
+def open_firefox_profile_dir(app: dict) -> dict:
+    if effective_kind(app) != "firefox":
+        return {"ok": False, "error": "该应用不是 Firefox / Gecko 类型"}
+    profile_dir = firefox_profile_dir(app)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        os.startfile(str(profile_dir))
+    return {"ok": True, "path": str(profile_dir)}
+
+
 def build_cmd(app, cfg):
     exe = expand(app["exe"])
     cmd = [exe] + split_args(app.get("args", ""))
@@ -890,11 +1254,9 @@ def make_state():
         exe = expand(app["exe"])
         kind, evidence = detect_kind(exe)
         eff_kind = effective_kind(app)
-        profile_running = (
-            is_firefox_profile_locked(firefox_profile_dir(app))
-            if (eff_kind == "firefox" and not _has_firefox_profile_arg(split_args(app.get("args", ""))))
-            else False
-        )
+        has_custom_profile = _has_firefox_profile_arg(split_args(app.get("args", "")))
+        ff_dir = firefox_profile_dir(app) if (eff_kind == "firefox" and not has_custom_profile) else None
+        profile_running = is_firefox_profile_locked(ff_dir) if ff_dir is not None else False
         apps.append({
             **app,
             "resolved_exe": exe,
@@ -905,10 +1267,14 @@ def make_state():
             "evidence": evidence,
             "running": bool(running_lines(exe)),
             "profile_running": profile_running,
+            "firefox_profile_dir": str(ff_dir) if ff_dir is not None else "",
+            "firefox_profile_exists": bool(ff_dir and ff_dir.is_dir()),
         })
     return {
         "proxy": p,
         "adb_path": str(cfg.get("adb_path") or ""),
+        "adb_serial": str(cfg.get("adb_serial") or ""),
+        "tray_active": is_tray_active(),
         "proxy_url": proxy_url(cfg),
         "proxy_upstream_url": "http://%s:%s" % upstream_target,
         "router_listen": "%s:%s" % (p.get("listen_host", "127.0.0.1"), p.get("listen_port", 10086)),
@@ -1365,9 +1731,71 @@ def _read_exact(stream, length):
     return bytes(data)
 
 
+def _touch_proxy_activity():
+    global _last_proxy_activity
+    _last_proxy_activity = time.time()
+
+
+def _format_proxy_error(exc, action="PROXY", default_msg="代理请求失败"):
+    if isinstance(exc, ValueError):
+        return str(exc) or default_msg
+    if isinstance(exc, TimeoutError):
+        return "连接上游超时（请检查手机 Clash / ADB）" if action == "PROXY" else "直连目标超时"
+    if isinstance(exc, ConnectionRefusedError):
+        return "上游代理拒绝连接（请检查手机 Clash 或 ADB 转发）" if action == "PROXY" else "目标服务器拒绝连接"
+    if isinstance(exc, socket.gaierror):
+        return "域名解析失败"
+    if isinstance(exc, ConnectionResetError):
+        return "连接被对端重置"
+    if isinstance(exc, OSError):
+        text = str(exc)
+        if any(ord(ch) > 127 for ch in text):
+            return text
+        return f"{default_msg}：{text}" if text else default_msg
+    return default_msg
+
+
+def _read_chunked_body(stream, max_bytes=PROXY_MAX_BODY_BYTES) -> bytes:
+    body = bytearray()
+    while True:
+        line = stream.readline(65536)
+        if not line.endswith(b"\r\n"):
+            raise ValueError("分块请求体格式无效")
+        size_part = line[:-2].split(b";", 1)[0].strip()
+        if not size_part:
+            raise ValueError("分块请求体大小无效")
+        try:
+            chunk_size = int(size_part, 16)
+        except ValueError:
+            raise ValueError("分块请求体大小无效")
+        if chunk_size < 0 or len(body) + chunk_size > max_bytes:
+            raise ValueError("请求体超过代理限制")
+        if chunk_size == 0:
+            trailer_bytes = 0
+            while True:
+                trailer = stream.readline(65536)
+                if not trailer:
+                    raise ValueError("分块请求体未正常结束")
+                trailer_bytes += len(trailer)
+                if trailer_bytes > PROXY_MAX_HEADER_BYTES:
+                    raise ValueError("分块请求尾部过大")
+                if trailer == b"\r\n":
+                    break
+            break
+        chunk = _read_exact(stream, chunk_size)
+        if len(chunk) != chunk_size:
+            raise ValueError("分块请求体未完整到达")
+        crlf = _read_exact(stream, 2)
+        if crlf != b"\r\n":
+            raise ValueError("分块请求体缺少结束换行")
+        body.extend(chunk)
+    return bytes(body)
+
+
 def _relay_sockets(left, right, initial_right_to_left=b""):
     if initial_right_to_left:
         left.sendall(initial_right_to_left)
+        _touch_proxy_activity()
     sockets = [left, right]
     last_activity = time.monotonic()
     while sockets and time.monotonic() - last_activity < PROXY_IDLE_TIMEOUT:
@@ -1387,14 +1815,7 @@ def _relay_sockets(left, right, initial_right_to_left=b""):
             destination = right if source is left else left
             destination.sendall(data)
             last_activity = time.monotonic()
-
-
-def _proxy_event(host, action, ok=True, error="", rule=""):
-    """Call both the current and the rule-aware event logger during migration."""
-    try:
-        _record_proxy_event(host, action, ok, error, rule=rule)
-    except TypeError:
-        _record_proxy_event(host, action, ok, error)
+            _touch_proxy_activity()
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
@@ -1425,7 +1846,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def _fail(self, code, host="", action="ERROR", rule="", message="代理请求失败"):
-        _proxy_event(host or "unknown", action, False, message, rule)
+        _record_proxy_event(host or "unknown", action, False, message, rule=rule)
         self._error(code, message)
 
     def _table(self):
@@ -1470,6 +1891,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         return "[%s]:%s" % (host, port) if ":" in host else "%s:%s" % (host, port)
 
     def do_CONNECT(self):
+        _touch_proxy_activity()
         host = ""
         action = "ERROR"
         rule = ""
@@ -1489,28 +1911,37 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     raise ValueError("上游代理不能指向自身")
                 upstream, initial = self._upstream_connect(host, port, table.upstream)
             upstream.settimeout(PROXY_IDLE_TIMEOUT)
+            try:
+                self.connection.settimeout(PROXY_IDLE_TIMEOUT)
+            except OSError:
+                pass
             self.send_response(200, "Connection Established")
             self.send_header("Connection", "keep-alive")
             self.end_headers()
+            self.close_connection = True
             response_started = True
-            _proxy_event(host, action, rule=rule)
+            _record_proxy_event(host, action, rule=rule)
             try:
                 _relay_sockets(self.connection, upstream, initial)
             finally:
                 upstream.close()
         except (OSError, ValueError, TimeoutError) as exc:
             if not response_started:
-                self._fail(502, host, action, rule, "无法建立代理隧道")
+                msg = _format_proxy_error(exc, action, "无法建立代理隧道")
+                self._fail(502, host, action, rule, msg)
 
     def _request_body(self):
         transfer_encoding = (self.headers.get("Transfer-Encoding") or "").strip().lower()
-        if transfer_encoding and transfer_encoding != "identity":
-            raise ValueError("暂不支持分块请求体，请使用 Content-Length")
+        encodings = [part.strip() for part in transfer_encoding.split(",") if part.strip()]
+        if encodings == ["chunked"] or (encodings and encodings[-1] == "chunked" and all(e == "identity" for e in encodings[:-1])):
+            return _read_chunked_body(self.rfile), True
+        if encodings and encodings != ["identity"]:
+            raise ValueError("不支持的 Transfer-Encoding：%s" % transfer_encoding)
         if self.headers.get("Expect"):
             raise ValueError("暂不支持 Expect 请求")
         raw_length = self.headers.get("Content-Length")
         if not raw_length:
-            return b""
+            return b"", False
         try:
             length = int(raw_length)
         except (TypeError, ValueError, OverflowError):
@@ -1520,9 +1951,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
         body = _read_exact(self.rfile, length)
         if len(body) != length:
             raise ValueError("请求体未完整到达")
-        return body
+        return body, False
 
-    def _request_bytes(self, target, host, port, parsed, body, absolute):
+    def _request_bytes(self, target, host, port, parsed, body, absolute, from_chunked=False):
         if parsed is not None and parsed.scheme.lower() == "https":
             raise ValueError("HTTPS 请求必须使用 CONNECT")
         if absolute:
@@ -1535,6 +1966,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             request_target = target or "/"
         lines = ["%s %s %s\r\n" % (self.command, request_target, self.request_version)]
         seen_host = False
+        seen_content_length = False
         connection_tokens = set()
         for value in self.headers.get_all("Connection", []):
             connection_tokens.update(item.strip().lower() for item in value.split(",") if item.strip())
@@ -1548,9 +1980,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 continue
             if lower == "host":
                 seen_host = True
+            elif lower == "content-length":
+                seen_content_length = True
             lines.append("%s: %s\r\n" % (key, value))
         if not seen_host:
             lines.append("Host: %s\r\n" % self._connect_target(host, port))
+        if from_chunked and not seen_content_length:
+            lines.append("Content-Length: %d\r\n" % len(body))
         lines.append("Connection: close\r\n\r\n")
         return "".join(lines).encode("latin-1", errors="replace") + body
 
@@ -1606,6 +2042,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._forward_http()
 
     def _forward_http(self):
+        _touch_proxy_activity()
         upstream = None
         host = ""
         action = "ERROR"
@@ -1619,9 +2056,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
             action, rule = self._route(table, host)
             if action == "PROXY" and self._is_self_target(*table.upstream):
                 raise ValueError("上游代理不能指向自身")
-            body = self._request_body()
+            body, from_chunked = self._request_body()
             request = self._request_bytes(
-                self.path, host, port, parsed, body, absolute=action == "PROXY"
+                self.path, host, port, parsed, body, absolute=(action == "PROXY"), from_chunked=from_chunked
             )
             upstream = self._connect(host, port) if action == "DIRECT" else self._connect(*table.upstream)
             upstream.settimeout(PROXY_IDLE_TIMEOUT)
@@ -1633,23 +2070,84 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     break
                 response_started = True
                 self.connection.sendall(chunk)
-            _proxy_event(host, action, rule=rule)
+                _touch_proxy_activity()
+            _record_proxy_event(host, action, rule=rule)
         except (OSError, ValueError, TimeoutError) as exc:
             if not response_started:
                 code = 400 if isinstance(exc, ValueError) else 502
-                self._fail(code, host, action, rule, "无法转发代理请求")
+                msg = _format_proxy_error(exc, action, "无法转发代理请求")
+                self._fail(code, host, action, rule, msg)
         finally:
             if upstream is not None:
                 upstream.close()
+
+
+def _file_sig(path: Path):
+    try:
+        st = path.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _invalidate_proxy_route_cache():
+    server = _proxy_server
+    if server is not None and hasattr(server, "invalidate_route_cache"):
+        server.invalidate_route_cache()
 
 
 class ProxyServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
+    def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
+        self._route_lock = threading.Lock()
+        self._cfg_cache_key = None
+        self._cfg_cache = None
+        self._route_cache_key = None
+        self._route_cache_table = None
+        super().__init__(server_address, RequestHandlerClass, bind_and_activate)
+
+    def invalidate_route_cache(self):
+        with self._route_lock:
+            self._cfg_cache_key = None
+            self._cfg_cache = None
+            self._route_cache_key = None
+            self._route_cache_table = None
+
     def route_table(self):
-        cfg = load_config()
-        return RouteTable.load(cfg)
+        cfg_path = CONFIG_PATH
+        cfg_key = (str(cfg_path), _file_sig(cfg_path))
+        with self._route_lock:
+            if cfg_key == self._cfg_cache_key and self._cfg_cache is not None:
+                cfg = self._cfg_cache
+            else:
+                cfg = load_config()
+                self._cfg_cache_key = (str(cfg_path), _file_sig(cfg_path))
+                self._cfg_cache = cfg
+
+            r_path = rules_path(cfg)
+            p = cfg.get("proxy", {})
+            rt_key = (
+                str(r_path),
+                _file_sig(r_path),
+                str(p.get("host") or ""),
+                str(p.get("port") or ""),
+                str(p.get("listen_port") or ""),
+            )
+            if rt_key == self._route_cache_key and self._route_cache_table is not None:
+                return self._route_cache_table
+
+            table = RouteTable.load(cfg)
+            self._route_cache_key = (
+                str(r_path),
+                _file_sig(r_path),
+                str(p.get("host") or ""),
+                str(p.get("port") or ""),
+                str(p.get("listen_port") or ""),
+            )
+            self._route_cache_table = table
+            return table
 
 
 def start_proxy_server(cfg):
@@ -1774,11 +2272,20 @@ class AdbTool:
             rows.append({"serial": parts[0], "local": parts[1], "remote": parts[2]})
         return rows
 
-    def online_device(self):
-        for device in self.devices():
-            if device["state"] == "device":
-                return device
-        return None
+    def online_device(self, serial: str = ""):
+        explicit = str(serial or "").strip()
+        preferred = explicit or str(self.cfg.get("adb_serial") or "").strip()
+        online = [device for device in self.devices() if device["state"] == "device"]
+        if explicit:
+            for device in online:
+                if device["serial"] == explicit:
+                    return device
+            raise AdbError("指定设备 %s 未在线" % explicit)
+        if preferred:
+            for device in online:
+                if device["serial"] == preferred:
+                    return device
+        return online[0] if online else None
 
     def upstream_port(self):
         try:
@@ -1787,6 +2294,7 @@ class AdbTool:
             return 5038
 
     def state(self):
+        preferred = str(self.cfg.get("adb_serial") or "").strip()
         result = {
             "ok": True,
             "adb_path": "",
@@ -1794,6 +2302,7 @@ class AdbTool:
             "devices": [],
             "forwards": [],
             "upstream_port": self.upstream_port(),
+            "selected_serial": preferred,
             "error": "",
         }
         argv = self.resolve()
@@ -1805,12 +2314,17 @@ class AdbTool:
         try:
             result["devices"] = self.devices()
             result["forwards"] = self.forwards()
+            online_serials = [d["serial"] for d in result["devices"] if d["state"] == "device"]
+            if preferred and preferred in online_serials:
+                result["selected_serial"] = preferred
+            elif online_serials:
+                result["selected_serial"] = online_serials[0]
         except AdbError as exc:
             result["error"] = str(exc)
         return result
 
-    def forward(self):
-        device = self.online_device()
+    def forward(self, serial: str = ""):
+        device = self.online_device(serial=serial)
         if device is None:
             raise AdbError("未检测到在线设备")
         port = self.upstream_port()
@@ -1821,8 +2335,8 @@ class AdbTool:
             raise AdbError(err.strip() or "adb forward 执行失败")
         return {"serial": device["serial"], "local": "tcp:%d" % port, "remote": "tcp:%d" % port}
 
-    def unforward(self):
-        device = self.online_device()
+    def unforward(self, serial: str = ""):
+        device = self.online_device(serial=serial)
         if device is None:
             raise AdbError("未检测到在线设备")
         port = self.upstream_port()
@@ -1983,6 +2497,28 @@ class Handler(BaseHTTPRequestHandler):
                 })
                 return
 
+            if parsed.path == "/api/rules":
+                cfg = load_config()
+                ensure_rules_file(cfg)
+                path = rules_path(cfg)
+                content = ""
+                read_err = ""
+                if path.is_file():
+                    try:
+                        content = path.read_text(encoding="utf-8-sig")
+                    except OSError as exc:
+                        read_err = "读取规则文件失败：%s" % exc
+                table = RouteTable.load(cfg)
+                self.send_json({
+                    "ok": not bool(read_err),
+                    "path": str(path),
+                    "content": content,
+                    "error": read_err or table.error,
+                    "rule_count": len(table.rules),
+                    "upstream": table.upstream_url,
+                })
+                return
+
         self.send_json({"error": "not found"}, 404)
 
     def do_POST(self):
@@ -2005,12 +2541,32 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/quit":
+            force = bool(body.get("force"))
+            if force:
+                cancel_pending_quit()
+                stop_tray()
+                timer = threading.Timer(0.15, _do_shutdown)
+                timer.daemon = True
+                timer.start()
+                self.send_json({"ok": True, "quitting": True})
+                return
+            if is_tray_active():
+                self.send_json({"ok": True, "kept_in_tray": True})
+                return
+            if time.time() - _last_proxy_activity < 60:
+                self.send_json({"ok": True, "kept_in_tray": False, "active_proxy": True})
+                return
             schedule_quit(3.0)
-            self.send_json({"ok": True})
+            self.send_json({"ok": True, "quitting": True})
             return
 
         cancel_pending_quit()
         _last_request = time.time()
+
+        if path == "/api/ui/show":
+            show_ui_window()
+            self.send_json({"ok": True})
+            return
 
         if path == "/api/probe":
             cfg = load_config()
@@ -2025,8 +2581,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/adb/forward":
+            serial = str(body.get("serial") or "").strip()
             try:
-                result = AdbTool(load_config()).forward()
+                result = AdbTool(load_config()).forward(serial=serial)
             except AdbError as exc:
                 self.send_json({"ok": False, "error": str(exc)}, 400)
                 return
@@ -2034,8 +2591,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/adb/unforward":
+            serial = str(body.get("serial") or "").strip()
             try:
-                result = AdbTool(load_config()).unforward()
+                result = AdbTool(load_config()).unforward(serial=serial)
             except AdbError as exc:
                 self.send_json({"ok": False, "error": str(exc)}, 400)
                 return
@@ -2055,6 +2613,14 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({"ok": False, "error": "adb 路径格式错误"}, 400)
                     return
                 new_adb_path = raw_adb_path.strip()
+
+            new_adb_serial = None
+            if "adb_serial" in body:
+                raw_adb_serial = body["adb_serial"]
+                if not isinstance(raw_adb_serial, str):
+                    self.send_json({"ok": False, "error": "adb 设备序列号格式错误"}, 400)
+                    return
+                new_adb_serial = raw_adb_serial.strip()
 
             new_host = None
             if "host" in incoming:
@@ -2118,12 +2684,74 @@ class Handler(BaseHTTPRequestHandler):
                     cfg["proxy"]["enabled"] = bool(incoming["enabled"])
                 if new_adb_path is not None:
                     cfg["adb_path"] = new_adb_path
+                if new_adb_serial is not None:
+                    cfg["adb_serial"] = new_adb_serial
                 save_config(cfg)
                 restart_keys = ("listen_host", "listen_port", "rules_file", "host", "port")
                 restart_router = any(previous_proxy.get(key) != cfg["proxy"].get(key) for key in restart_keys)
             if restart_router:
                 restart_proxy_server(load_config())
+            _update_tray_tooltip()
             self.send_json({"ok": True, "state": make_state()})
+            return
+
+        if path == "/api/rules":
+            content = body.get("content")
+            if not isinstance(content, str):
+                self.send_json({"ok": False, "error": "规则内容格式错误"}, 400)
+                return
+            cfg = load_config()
+            table = save_rules_text(cfg, content)
+            if table.error:
+                self.send_json({"ok": False, "error": table.error}, 400)
+                return
+            self.send_json({
+                "ok": True,
+                "path": str(table.source),
+                "rule_count": len(table.rules),
+                "state": make_state(),
+            })
+            return
+
+        if path == "/api/rules/test":
+            raw_host = str(body.get("host") or "").strip()
+            host = extract_test_host(raw_host)
+            if not host:
+                self.send_json({"ok": False, "error": "请输入域名或 URL"}, 400)
+                return
+            cfg = load_config()
+            table = RouteTable.load(cfg)
+            if table.error:
+                self.send_json({"ok": False, "error": table.error}, 400)
+                return
+            try:
+                rule, idx = table.match_detail(host)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            self.send_json({
+                "ok": True,
+                "host": host,
+                "action": rule.action,
+                "rule": rule.label,
+                "rule_index": idx,
+            })
+            return
+
+        if path == "/api/rules/quick-add":
+            host = str(body.get("host") or "").strip()
+            action = str(body.get("action") or "").strip()
+            kind = str(body.get("kind") or "").strip()
+            try:
+                res = quick_add_rule(load_config(), host, action, kind=kind)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            if not res.get("ok"):
+                self.send_json(res, 400)
+                return
+            res["state"] = make_state()
+            self.send_json(res)
             return
 
         if path in ("/api/app/add", "/api/app/update"):
@@ -2163,6 +2791,30 @@ class Handler(BaseHTTPRequestHandler):
                 save_config(cfg)
                 removed = before - len(cfg["apps"])
             self.send_json({"ok": True, "removed": removed, "state": make_state()})
+            return
+
+        if path == "/api/app/firefox/sync":
+            cfg = load_config()
+            app = find_app(cfg, body.get("id"))
+            if not app:
+                self.send_json({"ok": False, "error": "找不到该应用"}, 404)
+                return
+            res = sync_firefox_profile(app, cfg)
+            if not res.get("ok"):
+                self.send_json(res, 400)
+                return
+            res["state"] = make_state()
+            self.send_json(res)
+            return
+
+        if path == "/api/app/firefox/open-profile":
+            cfg = load_config()
+            app = find_app(cfg, body.get("id"))
+            if not app:
+                self.send_json({"ok": False, "error": "找不到该应用"}, 404)
+                return
+            res = open_firefox_profile_dir(app)
+            self.send_json(res, 200 if res.get("ok") else 400)
             return
 
         if path == "/api/launch":
@@ -2256,12 +2908,439 @@ def focus_existing_window() -> bool:
     return found[0]
 
 
+def _tray_tooltip_text(cfg=None) -> str:
+    c = cfg or load_config()
+    p = c.get("proxy", {})
+    enabled = bool(p.get("enabled", True))
+    listen = "%s:%s" % (p.get("listen_host", "127.0.0.1"), p.get("listen_port", 10086))
+    status = "代理已开启" if enabled else "代理已关闭"
+    return f"DroidBridge · {status} ({listen})"[:127]
+
+
+def is_tray_active() -> bool:
+    return bool(_tray is not None and _tray.active)
+
+
+def _update_tray_tooltip(cfg=None):
+    if _tray is not None and _tray.active:
+        _tray.update_tooltip(_tray_tooltip_text(cfg))
+
+
+def show_ui_window():
+    if not focus_existing_window() and _ui_url:
+        open_window(_ui_url)
+
+
+def _toggle_tray_proxy():
+    with _config_lock:
+        cfg = load_config()
+        cfg["proxy"]["enabled"] = not bool(cfg["proxy"].get("enabled", True))
+        save_config(cfg)
+    _update_tray_tooltip(cfg)
+
+
+def _quit_from_tray():
+    cancel_pending_quit()
+    stop_tray()
+    _do_shutdown()
+
+
+class _TrayGUID(ctypes.Structure):
+    _fields_ = [
+        ("Data1", wintypes.DWORD),
+        ("Data2", wintypes.WORD),
+        ("Data3", wintypes.WORD),
+        ("Data4", ctypes.c_ubyte * 8),
+    ]
+
+
+class _TrayTimeoutVersion(ctypes.Union):
+    _fields_ = [
+        ("uTimeout", wintypes.UINT),
+        ("uVersion", wintypes.UINT),
+    ]
+
+
+class _NOTIFYICONDATAW(ctypes.Structure):
+    _anonymous_ = ("u",)
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("hWnd", wintypes.HWND),
+        ("uID", wintypes.UINT),
+        ("uFlags", wintypes.UINT),
+        ("uCallbackMessage", wintypes.UINT),
+        ("hIcon", wintypes.HICON),
+        ("szTip", wintypes.WCHAR * 128),
+        ("dwState", wintypes.DWORD),
+        ("dwStateMask", wintypes.DWORD),
+        ("szInfo", wintypes.WCHAR * 256),
+        ("u", _TrayTimeoutVersion),
+        ("szInfoTitle", wintypes.WCHAR * 64),
+        ("dwInfoFlags", wintypes.DWORD),
+        ("guidItem", _TrayGUID),
+        ("hBalloonIcon", wintypes.HICON),
+    ]
+
+
+_TrayLRESULT = ctypes.c_ssize_t
+_TrayWNDPROC = (
+    ctypes.WINFUNCTYPE(_TrayLRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+    if os.name == "nt" else None
+)
+
+
+class _TrayWNDCLASSW(ctypes.Structure):
+    _fields_ = [
+        ("style", wintypes.UINT),
+        ("lpfnWndProc", _TrayWNDPROC if _TrayWNDPROC is not None else ctypes.c_void_p),
+        ("cbClsExtra", ctypes.c_int),
+        ("cbWndExtra", ctypes.c_int),
+        ("hInstance", wintypes.HINSTANCE),
+        ("hIcon", wintypes.HICON),
+        ("hCursor", wintypes.HICON),
+        ("hbrBackground", wintypes.HBRUSH),
+        ("lpszMenuName", wintypes.LPCWSTR),
+        ("lpszClassName", wintypes.LPCWSTR),
+    ]
+
+
+_tray_api_lock = threading.Lock()
+_tray_api_ready = False
+
+
+def _ensure_tray_win32_api():
+    global _tray_api_ready
+    if os.name != "nt" or _user32 is None or _shell32 is None or _kernel32 is None:
+        return False
+    with _tray_api_lock:
+        if _tray_api_ready:
+            return True
+        _kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        _kernel32.GetModuleHandleW.restype = wintypes.HINSTANCE
+        _user32.RegisterClassW.argtypes = [ctypes.POINTER(_TrayWNDCLASSW)]
+        _user32.RegisterClassW.restype = wintypes.ATOM
+        _user32.UnregisterClassW.argtypes = [wintypes.LPCWSTR, wintypes.HINSTANCE]
+        _user32.UnregisterClassW.restype = wintypes.BOOL
+        _user32.CreateWindowExW.argtypes = [
+            wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, ctypes.c_void_p,
+        ]
+        _user32.CreateWindowExW.restype = wintypes.HWND
+        _user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        _user32.DefWindowProcW.restype = _TrayLRESULT
+        _user32.DestroyWindow.argtypes = [wintypes.HWND]
+        _user32.DestroyWindow.restype = wintypes.BOOL
+        _user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
+        _user32.GetMessageW.restype = ctypes.c_int
+        _user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
+        _user32.TranslateMessage.restype = wintypes.BOOL
+        _user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+        _user32.DispatchMessageW.restype = _TrayLRESULT
+        _user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        _user32.PostMessageW.restype = wintypes.BOOL
+        _user32.PostQuitMessage.argtypes = [ctypes.c_int]
+        _user32.PostQuitMessage.restype = None
+        _user32.RegisterWindowMessageW.argtypes = [wintypes.LPCWSTR]
+        _user32.RegisterWindowMessageW.restype = wintypes.UINT
+        _user32.CreatePopupMenu.argtypes = []
+        _user32.CreatePopupMenu.restype = wintypes.HMENU
+        _user32.AppendMenuW.argtypes = [wintypes.HMENU, wintypes.UINT, ctypes.c_size_t, wintypes.LPCWSTR]
+        _user32.AppendMenuW.restype = wintypes.BOOL
+        _user32.SetMenuDefaultItem.argtypes = [wintypes.HMENU, wintypes.UINT, wintypes.UINT]
+        _user32.SetMenuDefaultItem.restype = wintypes.BOOL
+        _user32.TrackPopupMenuEx.argtypes = [
+            wintypes.HMENU, wintypes.UINT, ctypes.c_int, ctypes.c_int, wintypes.HWND, ctypes.c_void_p,
+        ]
+        _user32.TrackPopupMenuEx.restype = wintypes.BOOL
+        _user32.DestroyMenu.argtypes = [wintypes.HMENU]
+        _user32.DestroyMenu.restype = wintypes.BOOL
+        _user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        _user32.SetForegroundWindow.restype = wintypes.BOOL
+        _user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+        _user32.GetCursorPos.restype = wintypes.BOOL
+        _user32.LoadImageW.argtypes = [
+            wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT, ctypes.c_int, ctypes.c_int, wintypes.UINT,
+        ]
+        _user32.LoadImageW.restype = wintypes.HICON
+        _user32.LoadIconW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR]
+        _user32.LoadIconW.restype = wintypes.HICON
+        _user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+        _user32.GetSystemMetrics.restype = ctypes.c_int
+        _shell32.Shell_NotifyIconW.argtypes = [wintypes.DWORD, ctypes.POINTER(_NOTIFYICONDATAW)]
+        _shell32.Shell_NotifyIconW.restype = wintypes.BOOL
+        _tray_api_ready = True
+        return True
+
+
+class TrayController:
+    """Minimal Windows system tray icon implemented purely with ctypes."""
+
+    WM_CLOSE = 0x0010
+    WM_DESTROY = 0x0002
+    WM_COMMAND = 0x0111
+    WM_CONTEXTMENU = 0x007B
+    WM_LBUTTONUP = 0x0202
+    WM_LBUTTONDBLCLK = 0x0203
+    WM_RBUTTONUP = 0x0205
+    WM_TRAYICON = 0x8001
+
+    NIM_ADD = 0x00000000
+    NIM_MODIFY = 0x00000001
+    NIM_DELETE = 0x00000002
+    NIF_MESSAGE = 0x00000001
+    NIF_ICON = 0x00000002
+    NIF_TIP = 0x00000004
+
+    IMAGE_ICON = 1
+    LR_LOADFROMFILE = 0x0010
+    LR_DEFAULTSIZE = 0x0040
+    MF_STRING = 0x0000
+    MF_CHECKED = 0x0008
+    MF_UNCHECKED = 0x0000
+    MF_SEPARATOR = 0x0800
+    TPM_LEFTALIGN = 0x0000
+    TPM_BOTTOMALIGN = 0x0020
+    TPM_RIGHTBUTTON = 0x0002
+
+    CMD_OPEN = 1001
+    CMD_TOGGLE_PROXY = 1002
+    CMD_QUIT = 1003
+
+    def __init__(self, on_open, on_toggle_proxy, on_quit, is_proxy_enabled, tooltip="DroidBridge"):
+        self.on_open = on_open
+        self.on_toggle_proxy = on_toggle_proxy
+        self.on_quit = on_quit
+        self.is_proxy_enabled = is_proxy_enabled
+        self._tooltip = str(tooltip or "DroidBridge")[:127]
+        self.active = False
+        self._lock = threading.Lock()
+        self._ready = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._hwnd = None
+        self._hicon = None
+        self._owns_icon = False
+        self._nid = None
+        self._wndproc_ref = None
+        self._class_name = f"DroidBridgeTray_{id(self)}"
+        self._hinst = None
+        self._wm_taskbar_created = 0
+
+    def start(self, timeout=2.0) -> bool:
+        if os.name != "nt":
+            return False
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        self._ready.wait(timeout=timeout)
+        return self.active
+
+    def update_tooltip(self, text: str):
+        if not _ensure_tray_win32_api():
+            return
+        with self._lock:
+            self._tooltip = str(text or "DroidBridge")[:127]
+            if not self.active or not self._hwnd or not self._nid:
+                return
+            self._nid.uFlags = self.NIF_TIP
+            self._nid.szTip = self._tooltip
+            _shell32.Shell_NotifyIconW(self.NIM_MODIFY, ctypes.byref(self._nid))
+
+    def stop(self):
+        if not _ensure_tray_win32_api():
+            return
+        with self._lock:
+            hwnd = self._hwnd
+        if hwnd:
+            _user32.PostMessageW(hwnd, self.WM_CLOSE, 0, 0)
+        if self._thread and self._thread.is_alive() and threading.current_thread() is not self._thread:
+            self._thread.join(timeout=2.0)
+
+    def _run(self):
+        if not _ensure_tray_win32_api():
+            self._ready.set()
+            return
+
+        u32 = _user32
+        s32 = _shell32
+        k32 = _kernel32
+
+        self._wm_taskbar_created = u32.RegisterWindowMessageW("TaskbarCreated")
+        self._hinst = k32.GetModuleHandleW(None)
+
+        def _show_menu(hwnd):
+            hmenu = u32.CreatePopupMenu()
+            if not hmenu:
+                return
+            try:
+                u32.AppendMenuW(hmenu, self.MF_STRING, self.CMD_OPEN, "打开 DroidBridge 界面")
+                u32.SetMenuDefaultItem(hmenu, self.CMD_OPEN, 0)
+                u32.AppendMenuW(hmenu, self.MF_SEPARATOR, 0, None)
+                enabled = bool(self.is_proxy_enabled())
+                flag = self.MF_STRING | (self.MF_CHECKED if enabled else self.MF_UNCHECKED)
+                u32.AppendMenuW(hmenu, flag, self.CMD_TOGGLE_PROXY, "代理注入")
+                u32.AppendMenuW(hmenu, self.MF_SEPARATOR, 0, None)
+                u32.AppendMenuW(hmenu, self.MF_STRING, self.CMD_QUIT, "彻底退出 DroidBridge")
+
+                pt = wintypes.POINT()
+                u32.GetCursorPos(ctypes.byref(pt))
+                u32.SetForegroundWindow(hwnd)
+                u32.TrackPopupMenuEx(
+                    hmenu,
+                    self.TPM_LEFTALIGN | self.TPM_BOTTOMALIGN | self.TPM_RIGHTBUTTON,
+                    pt.x,
+                    pt.y,
+                    hwnd,
+                    None,
+                )
+                u32.PostMessageW(hwnd, 0, 0, 0)
+            finally:
+                u32.DestroyMenu(hmenu)
+
+        def _wndproc(hwnd, msg, wparam, lparam):
+            if msg == self.WM_TRAYICON:
+                event = lparam & 0xFFFF
+                if event in (self.WM_LBUTTONUP, self.WM_LBUTTONDBLCLK):
+                    threading.Thread(target=self.on_open, daemon=True).start()
+                    return 0
+                if event in (self.WM_RBUTTONUP, self.WM_CONTEXTMENU):
+                    _show_menu(hwnd)
+                    return 0
+            elif self._wm_taskbar_created and msg == self._wm_taskbar_created:
+                with self._lock:
+                    if self._nid is not None:
+                        self._nid.uFlags = self.NIF_MESSAGE | self.NIF_ICON | self.NIF_TIP
+                        s32.Shell_NotifyIconW(self.NIM_ADD, ctypes.byref(self._nid))
+                return 0
+            elif msg == self.WM_COMMAND:
+                cmd_id = wparam & 0xFFFF
+                if cmd_id == self.CMD_OPEN:
+                    threading.Thread(target=self.on_open, daemon=True).start()
+                elif cmd_id == self.CMD_TOGGLE_PROXY:
+                    threading.Thread(target=self.on_toggle_proxy, daemon=True).start()
+                elif cmd_id == self.CMD_QUIT:
+                    threading.Thread(target=self.on_quit, daemon=True).start()
+                return 0
+            elif msg == self.WM_CLOSE:
+                with self._lock:
+                    self.active = False
+                    if self._nid is not None:
+                        s32.Shell_NotifyIconW(self.NIM_DELETE, ctypes.byref(self._nid))
+                u32.DestroyWindow(hwnd)
+                return 0
+            elif msg == self.WM_DESTROY:
+                with self._lock:
+                    self.active = False
+                    self._hwnd = None
+                u32.PostQuitMessage(0)
+                return 0
+            return u32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+        self._wndproc_ref = _TrayWNDPROC(_wndproc)
+        wc = _TrayWNDCLASSW()
+        wc.lpfnWndProc = self._wndproc_ref
+        wc.hInstance = self._hinst
+        wc.lpszClassName = self._class_name
+
+        if not u32.RegisterClassW(ctypes.byref(wc)):
+            self._ready.set()
+            return
+
+        hwnd = None
+        try:
+            hwnd = u32.CreateWindowExW(
+                0, self._class_name, "DroidBridgeTray", 0,
+                0, 0, 0, 0, None, None, self._hinst, None,
+            )
+            if not hwnd:
+                self._ready.set()
+                return
+
+            cx = max(16, u32.GetSystemMetrics(49))
+            cy = max(16, u32.GetSystemMetrics(50))
+            if ICO_PATH.is_file():
+                loaded = u32.LoadImageW(
+                    None, str(ICO_PATH), self.IMAGE_ICON, cx, cy, self.LR_LOADFROMFILE,
+                )
+                if loaded:
+                    self._hicon = loaded
+                    self._owns_icon = True
+            if not self._hicon:
+                self._hicon = u32.LoadIconW(None, ctypes.cast(32512, wintypes.LPCWSTR))
+                self._owns_icon = False
+
+            nid = _NOTIFYICONDATAW()
+            nid.cbSize = ctypes.sizeof(_NOTIFYICONDATAW)
+            nid.hWnd = hwnd
+            nid.uID = 1
+            nid.uFlags = self.NIF_MESSAGE | self.NIF_ICON | self.NIF_TIP
+            nid.uCallbackMessage = self.WM_TRAYICON
+            nid.hIcon = self._hicon
+            nid.szTip = self._tooltip
+
+            if not s32.Shell_NotifyIconW(self.NIM_ADD, ctypes.byref(nid)):
+                u32.DestroyWindow(hwnd)
+                self._ready.set()
+                return
+
+            with self._lock:
+                self._hwnd = hwnd
+                self._nid = nid
+                self.active = True
+            self._ready.set()
+
+            msg = wintypes.MSG()
+            while u32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                u32.TranslateMessage(ctypes.byref(msg))
+                u32.DispatchMessageW(ctypes.byref(msg))
+        finally:
+            with self._lock:
+                self.active = False
+                if self._nid is not None and self._hwnd:
+                    s32.Shell_NotifyIconW(self.NIM_DELETE, ctypes.byref(self._nid))
+                self._nid = None
+                self._hwnd = None
+                if self._owns_icon and self._hicon:
+                    u32.DestroyIcon(self._hicon)
+                self._hicon = None
+                self._owns_icon = False
+            u32.UnregisterClassW(self._class_name, self._hinst)
+            self._ready.set()
+
+
+def start_tray(cfg=None) -> bool:
+    global _tray
+    if os.name != "nt":
+        return False
+    if _tray is not None and _tray.active:
+        return True
+    tray = TrayController(
+        on_open=show_ui_window,
+        on_toggle_proxy=_toggle_tray_proxy,
+        on_quit=_quit_from_tray,
+        is_proxy_enabled=lambda: bool(load_config().get("proxy", {}).get("enabled", True)),
+        tooltip=_tray_tooltip_text(cfg),
+    )
+    if tray.start():
+        _tray = tray
+        return True
+    return False
+
+
+def stop_tray():
+    global _tray
+    tray = _tray
+    _tray = None
+    if tray is not None:
+        tray.stop()
+
+
 def try_reuse_existing() -> bool:
     if not RUNTIME_PATH.is_file():
         return False
     try:
         data = json.loads(RUNTIME_PATH.read_text(encoding="utf-8"))
         url = str(data.get("url") or "")
+        token = str(data.get("token") or "")
         parsed = urlparse(url)
         if parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or not parsed.port:
             return False
@@ -2274,7 +3353,23 @@ def try_reuse_existing() -> bool:
             payload = json.loads(resp.read().decode("utf-8"))
         if payload.get("ok") is True and payload.get("app") == "DroidBridge":
             if "--no-browser" not in sys.argv:
-                if not focus_existing_window():
+                shown = False
+                if token:
+                    try:
+                        req = urllib.request.Request(
+                            f"http://127.0.0.1:{parsed.port}/api/ui/show",
+                            data=b"{}",
+                            method="POST",
+                            headers={
+                                "Content-Type": "application/json",
+                                "X-DroidBridge-Token": token,
+                            },
+                        )
+                        with opener.open(req, timeout=1.0) as show_resp:
+                            shown = show_resp.status == 200
+                    except Exception:
+                        shown = False
+                if not shown and not focus_existing_window():
                     open_window(url)
             return True
     except Exception:
@@ -2283,16 +3378,27 @@ def try_reuse_existing() -> bool:
 
 
 def idle_watchdog(timeout=180):
-    """Shut down if the UI window is gone (no polling for `timeout` seconds)."""
+    """Shut down when no tray is active and no UI/proxy/app activity remains."""
     while True:
         time.sleep(15)
-        if time.time() - _last_request > timeout and _server:
+        if is_tray_active():
+            continue
+        now_ts = time.time()
+        if now_ts - _last_request <= timeout or now_ts - _last_proxy_activity <= timeout:
+            continue
+        try:
+            apps = load_config().get("apps", [])
+            if any(running_lines(expand(a["exe"])) for a in apps):
+                continue
+        except Exception:
+            pass
+        if _server:
             threading.Thread(target=_server.shutdown, daemon=True).start()
             return
 
 
 def main():
-    global _server
+    global _server, _ui_url
     if try_reuse_existing():
         return
 
@@ -2301,14 +3407,21 @@ def main():
     _server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     _server.daemon_threads = True
     url = "http://127.0.0.1:%d/" % _server.server_address[1]
-    RUNTIME_PATH.write_text(json.dumps({"url": url, "pid": os.getpid()}), encoding="utf-8")
+    _ui_url = url
+    RUNTIME_PATH.write_text(
+        json.dumps({"url": url, "pid": os.getpid(), "token": API_TOKEN}),
+        encoding="utf-8",
+    )
     print("DroidBridge:", url, flush=True)
+    if os.name == "nt" and "--no-tray" not in sys.argv:
+        start_tray(cfg)
     if "--no-browser" not in sys.argv:
         threading.Timer(0.4, lambda: open_window(url)).start()
     threading.Thread(target=idle_watchdog, daemon=True).start()
     try:
         _server.serve_forever(poll_interval=0.3)
     finally:
+        stop_tray()
         _server.server_close()
         stop_proxy_server()
         try:

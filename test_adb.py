@@ -27,6 +27,11 @@ if args[:1] == ["-s"]:
 if args[:1] == ["devices"]:
     print("List of devices attached")
     print("R28M21CX3HL device product:raven model:Pixel_6_Pro device:raven transport_id:1")
+    extra = os.environ.get("FAKE_ADB_EXTRA_DEVICES", "")
+    if extra:
+        for line in extra.splitlines():
+            if line.strip():
+                print(line.strip())
     print("EMU-1 offline")
 elif args[:2] == ["forward", "--list"]:
     print("R28M21CX3HL tcp:5038 tcp:5038")
@@ -140,6 +145,32 @@ class AdbToolTests(unittest.TestCase):
         with self.assertRaises(droidbridge.AdbError) as ctx:
             tool.run(["devices"])
         self.assertIn("超时", str(ctx.exception))
+
+    def test_multi_device_selection_and_fallback(self):
+        os.environ["FAKE_ADB_EXTRA_DEVICES"] = "SECOND999 device model:Pixel_8"
+        self.addCleanup(os.environ.pop, "FAKE_ADB_EXTRA_DEVICES", None)
+
+        tool = self.injected_tool()
+        self.assertEqual(tool.online_device(serial="SECOND999")["serial"], "SECOND999")
+        res = tool.forward(serial="SECOND999")
+        self.assertEqual(res["serial"], "SECOND999")
+        self.assertIn("-s SECOND999 forward tcp:5038 tcp:5038", self.calls())
+
+        unfwd = tool.unforward(serial="SECOND999")
+        self.assertEqual(unfwd["serial"], "SECOND999")
+        self.assertIn("-s SECOND999 forward --remove tcp:5038", self.calls())
+
+        with self.assertRaises(droidbridge.AdbError):
+            tool.online_device(serial="MISSING")
+
+        pref_tool = droidbridge.AdbTool({"proxy": {"port": 5038}, "adb_path": "", "adb_serial": "SECOND999"})
+        pref_tool.resolve = lambda: [sys.executable, str(self.stub)]
+        self.assertEqual(pref_tool.online_device()["serial"], "SECOND999")
+        self.assertEqual(pref_tool.state()["selected_serial"], "SECOND999")
+
+        fallback_tool = droidbridge.AdbTool({"proxy": {"port": 5038}, "adb_path": "", "adb_serial": "GONE"})
+        fallback_tool.resolve = lambda: [sys.executable, str(self.stub)]
+        self.assertEqual(fallback_tool.online_device()["serial"], "R28M21CX3HL")
 
 
 if __name__ == "__main__":

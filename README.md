@@ -9,18 +9,18 @@ Python 纯标准库实现，零第三方依赖。
 ## 核心特性
 
 - **本地分流入口**
-  - 固定监听 `127.0.0.1:10086`，读取 `rules.yaml`，支持 `DOMAIN`、`DOMAIN-SUFFIX`、`DOMAIN-KEYWORD`、`IP-CIDR`、`MATCH` 与 `DIRECT` / `PROXY`。
+  - 固定监听 `127.0.0.1:10086`，读取并按文件变更自动缓存 `rules.yaml`，支持 `DOMAIN`、`DOMAIN-SUFFIX`、`DOMAIN-KEYWORD`、`IP-CIDR`、`MATCH` 与 `DIRECT` / `PROXY`；支持明文 HTTP `Transfer-Encoding: chunked` 请求体转发，并在失败时记录具体错误原因。
   - `DIRECT` 目标由电脑直连，`PROXY` 目标通过手机 Clash 的 `127.0.0.1:5038`。支持 HTTP 转发和 HTTPS `CONNECT`，只绑定回环地址。
-  - `rules.yaml` 是唯一的用户分流来源，不存在“直连手机 Clash”的旁路模式。分流入口未启动时，应用会被拒绝启动，避免出现请求看似注入成功、实际无法联网的状态。
-  - 内置**手动** ADB 管理面板：查看已连接设备与现有端口转发，手动建立 / 删除 `adb forward` 转发。所有操作都由你点击触发，不会自动执行；设备重连或 adb server 重启后转发失效时，在面板里点一次「建立转发」即可恢复。
+  - 支持在界面内直接编辑、校验与保存 `rules.yaml`，提供域名命中测试，并在「分流实况」中支持一键将域名加入 `DIRECT` 或 `PROXY`。
+  - 内置**手动** ADB 管理面板：查看已连接设备与现有端口转发，支持多设备切换，手动建立 / 删除 `adb forward` 转发，操作后立即联动刷新代理链路状态。
 - **三层代理注入**
   - **普通 / Node 应用**：注入 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`，并清空 `NO_PROXY`，确保请求进入本地分流入口。
   - **Electron / Chromium 应用**：自动根据同目录特征文件识别，并额外注入 `--proxy-server`（解决 Windows 下 Chromium 忽略 `*_PROXY` 环境变量的问题），在启动前对已运行实例做单实例锁提示。
-  - **Firefox / Gecko 应用**：自动根据同目录 `xul.dll`、`omni.ja` 等特征识别；使用 `-no-remote -profile` 在 `profiles/` 下隔离运行独立配置目录，每次启动自动写入 `user.js`，通过 `parent.lock` 避免误与日常 Firefox 冲突。
-- **独立轻量桌面壳**
+  - **Firefox / Gecko 应用**：自动根据同目录 `xul.dll`、`omni.ja` 等特征识别；使用 `-no-remote -profile` 在 `profiles/` 下隔离运行独立配置目录，每次启动自动写入 `user.js`，通过 `parent.lock` 避免误与日常 Firefox 冲突；编辑面板支持一键从本机默认 Firefox 配置同步账号、书签与扩展。
+- **独立轻量桌面壳与系统托盘常驻**
   - 自动使用本机 Chrome / Edge `--app=` 模式搭配独立用户目录与 `--no-proxy-server` 打开界面，自身不受外部代理干扰。
   - 启动台自己的独立浏览器进程不会被误判为目标 Chrome / Edge 已运行；真正已打开的目标浏览器仍会触发单实例提示。
-  - 支持单实例复用（重复启动时尝试置前已有窗口）、延迟关闭（`F5` 刷新不断连）、空闲自动退出守护。
+  - 支持系统托盘常驻（Windows 下关闭主窗口默认驻留托盘保持分流不断网，可从托盘菜单重新打开界面、开关代理或彻底退出）与单实例窗口唤起复用。
 - **原生 Windows 体验**
   - 通过 Win32 API 原生文件选择器（`GetOpenFileNameW`）选取 `.exe`，无需手动复制路径。
   - 自动提取目标 `.exe` 的真实图标展示在应用卡片上（失败时自动回退为首字母头像）。

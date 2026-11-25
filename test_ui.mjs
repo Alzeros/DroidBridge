@@ -33,6 +33,8 @@ const state = {
   routing_rules_error: '',
   routing_rules_file: 'rules.yaml',
   proxy_upstream_latency_ms: 8,
+  tray_active: false,
+  adb_serial: '',
   proxy_events: [
     { time: '14:02:11', host: 'www.xiaohongshu.com', action: 'PROXY', ok: true, rule: 'DOMAIN-SUFFIX,xiaohongshu.com,PROXY' },
     { time: '14:02:09', host: 'www.baidu.com', action: 'DIRECT', ok: true, rule: 'DOMAIN-SUFFIX,baidu.com,DIRECT' },
@@ -92,6 +94,7 @@ function requireExists(filePath) {
 async function startServer() {
   const html = await readFile(path.join(root, 'index.html'), 'utf8');
   const requests = [];
+  let rulesText = 'rules:\n  - DOMAIN-SUFFIX,baidu.com,DIRECT\n  - MATCH,PROXY\n';
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -101,11 +104,66 @@ async function startServer() {
       return;
     }
     if (url.pathname === '/api/state') {
+      requests.push({ path: url.pathname });
       res.end(JSON.stringify(state));
       return;
     }
     if (url.pathname === '/api/adb/state') {
       res.end(JSON.stringify(adbState));
+      return;
+    }
+    if (url.pathname === '/api/adb/forward' || url.pathname === '/api/adb/unforward') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      res.end(JSON.stringify({ ok: true, serial: parsed.serial || 'SERIAL123', local: 'tcp:5038', remote: 'tcp:5038' }));
+      return;
+    }
+    if (url.pathname === '/api/rules' && req.method === 'GET') {
+      res.end(JSON.stringify({ ok: true, path: 'rules.yaml', content: rulesText, error: '', rule_count: 2, upstream: 'http://127.0.0.1:5038' }));
+      return;
+    }
+    if (url.pathname === '/api/rules' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      if (!String(parsed.content || '').includes('MATCH,')) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: 'rules 最后一条必须是 MATCH' }));
+        return;
+      }
+      rulesText = parsed.content;
+      res.end(JSON.stringify({ ok: true, path: 'rules.yaml', rule_count: 3, state }));
+      return;
+    }
+    if (url.pathname === '/api/rules/test') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      res.end(JSON.stringify({ ok: true, host: parsed.host, action: 'DIRECT', rule: 'DOMAIN-SUFFIX,baidu.com,DIRECT', rule_index: 1 }));
+      return;
+    }
+    if (url.pathname === '/api/rules/quick-add') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      res.end(JSON.stringify({ ok: true, rule: `DOMAIN,${parsed.host},${parsed.action}`, changed: true, message: `已添加规则：DOMAIN,${parsed.host},${parsed.action}`, state }));
+      return;
+    }
+    if (url.pathname === '/api/app/firefox/sync') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      res.end(JSON.stringify({ ok: true, message: '已同步本机配置（含 3 个扩展）', state }));
+      return;
+    }
+    if (url.pathname === '/api/app/firefox/open-profile') {
+      res.end(JSON.stringify({ ok: true, path: 'S:\\Mydevelop\\DroidBridge\\profiles\\ff' }));
       return;
     }
     if (url.pathname === '/api/settings') {
@@ -408,7 +466,7 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
 });
 
 test('DroidBridge dashboard live chain, search, routing feed and undo', { timeout: 60000 }, async (t) => {
-  const { server, url } = await startServer();
+  const { server, requests, url } = await startServer();
   const browser = await startBrowser(findBrowser());
   t.after(async () => {
     await browser.close();
@@ -530,7 +588,9 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(await browser.evaluate("document.querySelector('#logPanel').hidden"), true);
   });
 
-  await t.test('draws the latency sparkline from samples', async () => {
+  await t.test('draws the latency sparkline from upstream samples', async () => {
+    const initialHistory = await browser.evaluate('LATENCY_HISTORY.slice()');
+    assert.deepEqual(initialHistory, [8]);
     const spark = await browser.evaluate(`(() => {
       LATENCY_HISTORY.length = 0;
       LATENCY_HISTORY.push(14, 9, 18, 11);
@@ -568,18 +628,118 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(await browser.evaluate("document.querySelectorAll('#appGrid .card').length"), 2);
   });
 
-  await t.test('routing feed lists decisions and filters by action', async () => {
+  await t.test('routing feed lists decisions, filters by action, and quick-adds rules', async () => {
     assert.equal(await browser.evaluate("document.querySelectorAll('#eventsBody .event-row').length"), 3);
     await browser.evaluate("document.querySelector('#eventChips [data-efilter=\"DIRECT\"]').click()");
     const rows = await browser.evaluate(`(() => ({
       count: document.querySelectorAll('#eventsBody .event-row').length,
       host: document.querySelector('#eventsBody .event-host .h').textContent,
       badge: document.querySelector('#eventsBody .badge').textContent,
+      quickLabel: document.querySelector('#eventsBody .event-quick-btn')?.textContent?.trim(),
     }))()`);
     assert.equal(rows.count, 1);
     assert.equal(rows.host, 'www.baidu.com');
     assert.equal(rows.badge, '直连');
+    assert.equal(rows.quickLabel, '改代理');
+    await browser.evaluate("document.querySelector('#eventsBody .event-quick-btn').click()");
+    const deadline = Date.now() + 5000;
+    let quickReq;
+    while (Date.now() < deadline) {
+      quickReq = requests.findLast((r) => r.path === '/api/rules/quick-add');
+      if (quickReq) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.deepEqual(quickReq?.body, { host: 'www.baidu.com', action: 'PROXY' });
     await browser.evaluate("document.querySelector('#eventChips [data-efilter=\"all\"]').click()");
+  });
+
+  await t.test('rules editor modal tests domains, saves rules, and closes on escape', async () => {
+    await browser.evaluate("document.querySelector('#btnOpenRules').click()");
+    await browser.waitFor("document.querySelector('#rulesModal').hidden === false");
+    await browser.waitFor("document.querySelector('#rulesContent').value.includes('MATCH,PROXY')");
+    await browser.evaluate("document.querySelector('#ruleTestHost').value = 'https://www.baidu.com/s'");
+    await browser.evaluate("document.querySelector('#btnRuleTest').click()");
+    await browser.waitFor("document.querySelector('#ruleTestResult').hidden === false");
+    const testText = await browser.evaluate("document.querySelector('#ruleTestResult').textContent");
+    assert.match(testText, /DOMAIN-SUFFIX,baidu\.com,DIRECT/);
+
+    await browser.evaluate("document.querySelector('#rulesContent').value = 'rules:\\n  - DOMAIN,new.test,DIRECT\\n  - MATCH,PROXY\\n'");
+    await browser.evaluate("document.querySelector('#btnRulesSave').click()");
+    await browser.waitFor("document.querySelector('#rulesModal').hidden === true");
+    const saveReq = requests.findLast((r) => r.path === '/api/rules');
+    assert.ok(saveReq);
+    assert.match(saveReq.body.content, /DOMAIN,new\.test,DIRECT/);
+
+    await browser.evaluate("document.querySelector('#btnOpenRules').click()");
+    await browser.waitFor("document.querySelector('#rulesModal').hidden === false");
+    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+    assert.equal(await browser.evaluate("document.querySelector('#rulesModal').hidden"), true);
+  });
+
+  await t.test('multi-device ADB selector passes serial and refreshes proxy chain immediately', async () => {
+    const beforeStateCount = requests.filter((r) => r.path === '/api/state').length;
+    await browser.evaluate(`(() => {
+      ADB_STATE = {
+        adb_found: true,
+        adb_path: 'C:\\\\fake\\\\adb.exe',
+        devices: [
+          { serial: 'DEV-1', model: 'Phone A', state: 'device' },
+          { serial: 'DEV-2', model: 'Phone B', state: 'device' },
+        ],
+        forwards: [],
+        upstream_port: 5038,
+        selected_serial: 'DEV-1',
+        error: '',
+      };
+      SELECTED_ADB_SERIAL = '';
+      renderAdb();
+      const sel = document.querySelector('#adbDeviceSelect');
+      sel.value = 'DEV-2';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    assert.equal(await browser.evaluate("document.querySelector('#adbDevicePickerRow').hidden"), false);
+    await browser.evaluate("document.querySelector('#adbPanel').open = true; document.querySelector('#btnAdbForward').click()");
+    const deadline = Date.now() + 5000;
+    let fwdReq;
+    while (Date.now() < deadline) {
+      fwdReq = requests.findLast((r) => r.path === '/api/adb/forward');
+      if (fwdReq && requests.filter((r) => r.path === '/api/state').length > beforeStateCount) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.deepEqual(fwdReq?.body, { serial: 'DEV-2' });
+    assert.ok(requests.filter((r) => r.path === '/api/state').length > beforeStateCount);
+  });
+
+  await t.test('shows Firefox profile tools and tray residency footer when applicable', async () => {
+    const ffVisible = await browser.evaluate(`(() => {
+      openEditor({
+        ...STATE.apps[0],
+        id: 'ff-test',
+        name: 'FireFox',
+        effective_kind: 'firefox',
+        firefox_profile_dir: 'S:\\\\Mydevelop\\\\DroidBridge\\\\profiles\\\\ff-test',
+      });
+      const shown = !document.querySelector('#ffProfileTools').hidden;
+      const fields = [...document.querySelectorAll('#editor input, #editor select')].map((el) => el.id);
+      closeEditor();
+      return { shown, fields };
+    })()`);
+    assert.equal(ffVisible.shown, true);
+    assert.deepEqual(ffVisible.fields, ['fName', 'fExe', 'fArgs', 'fKind', 'fNote']);
+
+    const trayFooter = await browser.evaluate(`(() => {
+      STATE.tray_active = true;
+      render();
+      const result = {
+        quitHidden: document.querySelector('#btnQuitService').hidden,
+        footText: document.querySelector('#footText').textContent,
+      };
+      STATE.tray_active = false;
+      render();
+      return result;
+    })()`);
+    assert.equal(trayFooter.quitHidden, false);
+    assert.match(trayFooter.footText, /系统托盘/);
   });
 
   await t.test('delete asks in-app and undo restores the app', async () => {

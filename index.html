@@ -162,8 +162,6 @@
   .avatar.has-icon .avatar-letter{opacity:0}
   .badge{display:inline-flex;align-items:center;gap:5px;font-size:var(--text-xs);line-height:1.4;
     padding:3px 8px;border-radius:999px;background:hsl(220 24% 95%);color:hsl(var(--muted));white-space:nowrap}
-  .badge.electron{background:hsl(var(--primary-soft));color:hsl(var(--primary-hover))}
-  .badge.firefox{background:hsl(28 100% 96%);color:hsl(24 74% 42%)}
   .badge.good{background:hsl(var(--green-soft));color:hsl(var(--green))}
   .badge.warn{background:hsl(var(--amber-soft));color:hsl(var(--amber))}
   .badge.bad{background:hsl(var(--red-soft));color:hsl(var(--red))}
@@ -211,7 +209,7 @@
   .card-secondary .btn.icon:hover{border-color:transparent;background:hsl(220 24% 93%);color:hsl(var(--text))}
   .card-secondary .btn.danger{color:hsl(var(--muted))}
   .card-secondary .btn.danger:hover{background:hsl(var(--red-soft));color:hsl(var(--red))}
-  .empty{grid-column:1/-1;text-align:center;padding:44px var(--space-5);color:hsl(var(--muted));
+  .empty{text-align:center;padding:44px var(--space-5);color:hsl(var(--muted));
     background:hsl(var(--surface));border:1px dashed hsl(215 24% 82%);border-radius:var(--radius-lg)}
   .empty-art{width:52px;height:52px;margin:0 auto var(--space-3);border-radius:16px;display:grid;place-items:center;
     background:linear-gradient(135deg,hsl(var(--primary-soft)),hsl(var(--teal-soft)));color:hsl(var(--primary))}
@@ -302,7 +300,8 @@
   .metric-row{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3);font-size:var(--text-sm)}
   .metric-row span{color:hsl(var(--muted));white-space:nowrap}
   .metric-row strong{font-weight:550;text-align:right;min-width:0;word-break:break-word}
-  .proxy-panel .btn{margin-top:var(--space-4)}
+  .proxy-actions{display:flex;gap:var(--space-2);margin-top:var(--space-4)}
+  .proxy-actions .btn{flex:1;margin-top:0;justify-content:center}
 
   .events-body{max-height:236px;overflow:auto;padding:var(--space-1) var(--space-4) var(--space-3)}
   .event-row{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:var(--space-3);align-items:center;
@@ -316,6 +315,13 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .event-host .e{display:block;color:hsl(var(--red));font-size:var(--text-xs);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .event-side{display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+  .event-quick-btn{border:1px solid hsl(var(--line));background:hsl(var(--surface-soft));color:hsl(var(--muted));
+    padding:2px 7px;border-radius:999px;font-size:11px;line-height:1.4;white-space:nowrap;
+    transition:background var(--transition),border-color var(--transition),color var(--transition)}
+  .event-quick-btn:hover:not(:disabled){border-color:hsl(var(--primary) / .35);background:hsl(var(--primary-soft));
+    color:hsl(var(--primary-hover))}
+  .event-quick-btn:disabled{opacity:.5;cursor:not-allowed}
   .events-empty{padding:26px var(--space-4);text-align:center;color:hsl(var(--muted));font-size:var(--text-sm)}
   .events-empty .btn{margin-top:var(--space-3)}
 
@@ -359,7 +365,25 @@
   .modal-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-5)}
   .modal.small{width:min(420px,100%)}
   .modal.small p{margin:0;color:hsl(var(--muted));font-size:var(--text-md);line-height:1.65;white-space:pre-wrap}
-  .foot{margin-top:var(--space-5);text-align:center;color:hsl(var(--subtle));font-size:var(--text-xs)}
+  .modal.wide{width:min(680px,100%)}
+  .rules-editor-area{display:block;width:100%;min-height:240px;margin-top:5px;padding:10px 12px;
+    border:1px solid hsl(var(--line));border-radius:var(--radius-sm);background:hsl(var(--surface-soft));
+    color:hsl(var(--text));font:12.5px/1.6 ui-monospace,Consolas,"Cascadia Code",monospace;resize:vertical;outline:none}
+  .rules-editor-area:focus{border-color:hsl(var(--primary))}
+  .rule-tester{margin-bottom:var(--space-3)}
+  .rule-tester .inspect{margin-top:var(--space-2)}
+  .ff-tools{margin:var(--space-2) 0 var(--space-3);padding:10px 12px;border:1px solid hsl(var(--line));
+    border-radius:var(--radius-sm);background:hsl(var(--surface-soft))}
+  .ff-tools-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);margin-bottom:4px;
+    font-size:var(--text-sm);font-weight:600;color:hsl(var(--text))}
+  .ff-tools-path{font:var(--text-xs)/1.5 ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--muted));
+    word-break:break-all;margin-bottom:var(--space-2)}
+  .ff-tools-actions{display:flex;gap:var(--space-2);flex-wrap:wrap}
+  .foot{margin-top:var(--space-5);display:flex;align-items:center;justify-content:center;gap:var(--space-3);
+    flex-wrap:wrap;text-align:center;color:hsl(var(--subtle));font-size:var(--text-xs)}
+  .foot-quit{border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--muted));
+    padding:3px 10px;border-radius:999px;font-size:var(--text-xs);transition:color var(--transition),border-color var(--transition),background var(--transition)}
+  .foot-quit:hover{color:hsl(var(--red));border-color:hsl(var(--red) / .3);background:hsl(var(--red-soft))}
   .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
     background:hsl(var(--text));color:hsl(0 0% 100%);padding:11px 18px;border-radius:10px;font-size:var(--text-md);
     box-shadow:0 10px 30px hsl(222 47% 11% / .2);z-index:30;opacity:0;transition:var(--transition);pointer-events:none;
@@ -474,6 +498,7 @@
               <button class="chip tiny" data-efilter="DIRECT">直连</button>
               <button class="chip tiny" data-efilter="ERROR">错误</button>
             </div>
+            <button class="btn tiny" id="btnOpenRules" style="white-space:nowrap;flex:none">编辑规则</button>
             <div class="log-tools" id="logTools" hidden>
               <div class="chips" id="logChips" role="group" aria-label="日志筛选">
                 <button class="chip tiny active" data-lfilter="all">全部</button>
@@ -522,7 +547,7 @@
             </li>
           </ol>
           <div class="spark-wrap">
-            <div class="spark-head"><span>入口延迟趋势</span><strong id="sparkNow">—</strong></div>
+            <div class="spark-head"><span title="手机 Clash 上游端口延迟趋势">上游延迟趋势</span><strong id="sparkNow">—</strong></div>
             <svg id="spark" viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true">
               <defs>
                 <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
@@ -549,6 +574,7 @@
             </div>
             <div class="adb-row"><span class="adb-key">adb</span><span class="adb-val adb-path" id="adbPath">检测中…</span></div>
             <div class="adb-row"><span class="adb-key">设备</span><span class="adb-val" id="adbDevices">—</span></div>
+            <div class="adb-row" id="adbDevicePickerRow" hidden><span class="adb-key">目标</span><select class="field-input" id="adbDeviceSelect" aria-label="选择目标设备" style="margin-top:0;padding:5px 8px"></select></div>
             <div class="adb-row"><span class="adb-key">转发</span><span class="adb-val adb-forward" id="adbForwards">—</span></div>
             <div class="adb-actions">
               <button class="btn primary" id="btnAdbForward">建立转发</button>
@@ -577,14 +603,20 @@
               <div class="metric-row"><span>本地入口</span><strong id="proxyLocal">—</strong></div>
               <div class="metric-row"><span>YAML 分流</span><strong id="proxyRouting">—</strong></div>
             </div>
-            <button class="btn full" id="btnProxySettings">代理设置</button>
+            <div class="proxy-actions">
+              <button class="btn" id="btnProxySettings">代理设置</button>
+              <button class="btn" id="btnEditRules">编辑规则</button>
+            </div>
           </div>
         </details>
       </section>
     </aside>
   </div>
 
-  <div class="foot">本地运行 · 关闭窗口即结束服务 · 配置存于 config.json</div>
+  <div class="foot">
+    <span id="footText">本地运行 · 关闭窗口即结束服务 · 配置存于 config.json</span>
+    <button type="button" class="foot-quit" id="btnQuitService" hidden>彻底退出服务</button>
+  </div>
 </main>
 
 <div class="modal-mask" id="editor" hidden>
@@ -608,9 +640,40 @@
       </select>
     </label>
     <label>备注<input id="fNote" placeholder="可选"></label>
+    <div class="ff-tools" id="ffProfileTools" hidden>
+      <div class="ff-tools-head"><span>Firefox 独立配置目录</span></div>
+      <div class="ff-tools-path" id="ffProfilePath"></div>
+      <div class="ff-tools-actions">
+        <button type="button" class="btn tiny" id="btnFfSync">同步本机默认配置</button>
+        <button type="button" class="btn tiny" id="btnFfOpenDir">打开配置目录</button>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn" id="btnCancel">取消</button>
       <button class="btn primary" id="btnSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="rulesModal" hidden>
+  <div class="modal wide">
+    <h3>分流规则编辑器</h3>
+    <div class="rule-tester">
+      <label>域名 / URL 命中测试
+        <div class="input-row">
+          <input id="ruleTestHost" placeholder="输入域名或 URL，如 https://api.cmaiot.cn/v1">
+          <button type="button" class="btn" id="btnRuleTest">测试</button>
+        </div>
+      </label>
+      <div class="inspect" id="ruleTestResult" hidden></div>
+    </div>
+    <label>规则文件内容（<span id="rulesPathLabel">rules.yaml</span>）
+      <textarea id="rulesContent" class="rules-editor-area" spellcheck="false"></textarea>
+    </label>
+    <div class="inspect bad" id="rulesError" hidden></div>
+    <div class="modal-actions">
+      <button class="btn" id="btnRulesCancel">取消</button>
+      <button class="btn primary" id="btnRulesSave">验证并保存</button>
     </div>
   </div>
 </div>
@@ -719,6 +782,7 @@ function setDiagnosticTab(tab){
   $('#eventsBody').hidden = showLogs;
   $('#logPanel').hidden = !showLogs;
   $('#eventChips').hidden = showLogs;
+  $('#btnOpenRules').hidden = showLogs;
   $('#logTools').hidden = !showLogs;
   $('#tabEvents').classList.toggle('active', !showLogs);
   $('#tabLogs').classList.toggle('active', showLogs);
@@ -761,6 +825,7 @@ function initial(name){
   const s=String(name||'?').trim(); return s ? (s[0].toUpperCase()) : '?';
 }
 let ADB_STATE = null;
+let SELECTED_ADB_SERIAL = '';
 
 function renderAdb(){
   const s = ADB_STATE;
@@ -778,9 +843,32 @@ function renderAdb(){
         return `${esc(d.serial)} · ${esc(label)} <span class="badge ${cls}">${esc(state)}</span>`;
       }).join('<br>')
     : '<span class="muted">未检测到设备</span>';
+
+  const onlineSerials = online.map(d => d.serial);
+  if(SELECTED_ADB_SERIAL && !onlineSerials.includes(SELECTED_ADB_SERIAL)){
+    SELECTED_ADB_SERIAL = '';
+  }
+  if(!SELECTED_ADB_SERIAL){
+    if(s.selected_serial && onlineSerials.includes(s.selected_serial)) SELECTED_ADB_SERIAL = s.selected_serial;
+    else if(online.length) SELECTED_ADB_SERIAL = online[0].serial;
+  }
+  const pickerRow = $('#adbDevicePickerRow');
+  const selectEl = $('#adbDeviceSelect');
+  if(online.length > 1){
+    pickerRow.hidden = false;
+    selectEl.innerHTML = online.map(d => {
+      const label = d.model ? `${d.serial} · ${d.model}` : d.serial;
+      return `<option value="${esc(d.serial)}">${esc(label)}</option>`;
+    }).join('');
+    selectEl.value = SELECTED_ADB_SERIAL;
+  }else{
+    pickerRow.hidden = true;
+    selectEl.innerHTML = '';
+  }
+
   const target = 'tcp:' + s.upstream_port;
   const forwards = s.forwards || [];
-  const exists = forwards.some(f => f.local === target);
+  const exists = forwards.some(f => f.local === target && (online.length <= 1 || !SELECTED_ADB_SERIAL || f.serial === SELECTED_ADB_SERIAL));
   $('#adbForwards').innerHTML = forwards.length
     ? forwards.map(f => `${esc(f.serial)} ${esc(f.local)} → ${esc(f.remote)}`).join('<br>')
     : '<span class="muted">暂无转发</span>';
@@ -1036,6 +1124,10 @@ function renderEvents(){
     const act = (e.action || '').toUpperCase();
     const cls = act === 'PROXY' ? 'proxy' : act === 'DIRECT' ? 'direct' : 'bad';
     const label = act === 'PROXY' ? '走代理' : act === 'DIRECT' ? '直连' : '错误';
+    const nextAct = act === 'PROXY' ? 'DIRECT' : (act === 'DIRECT' ? 'PROXY' : '');
+    const quickBtn = nextAct && e.host
+      ? `<button class="event-quick-btn" type="button" data-qhost="${esc(e.host)}" data-qact="${nextAct}" title="将 ${esc(e.host)} 设为${nextAct === 'DIRECT' ? '直连' : '走代理'}">${nextAct === 'DIRECT' ? '改直连' : '改代理'}</button>`
+      : '';
     return `<div class="event-row">
       <span class="event-time">${esc(e.time || '')}</span>
       <span class="event-host">
@@ -1043,7 +1135,7 @@ function renderEvents(){
         ${e.rule ? `<span class="r" title="${esc(e.rule)}">${esc(e.rule)}</span>` : ''}
         ${e.error ? `<span class="e" title="${esc(e.error)}">${esc(e.error)}</span>` : ''}
       </span>
-      <span class="badge ${cls}">${label}</span>
+      <span class="event-side"><span class="badge ${cls}">${label}</span>${quickBtn}</span>
     </div>`;
   }).join('');
 }
@@ -1063,6 +1155,13 @@ function render(){
   const proxyBadge = $('#proxyPanelBadge');
   proxyBadge.textContent = !p.enabled ? '已关闭' : (STATE.proxy_online ? '在线' : '离线');
   proxyBadge.className = 'badge ' + (!p.enabled ? '' : (STATE.proxy_online ? 'good' : 'warn'));
+  if(STATE.tray_active){
+    $('#footText').textContent = '本地运行 · 关闭窗口将驻留系统托盘保持分流 · 配置存于 config.json';
+    $('#btnQuitService').hidden = false;
+  }else{
+    $('#footText').textContent = '本地运行 · 关闭窗口即结束服务 · 配置存于 config.json';
+    $('#btnQuitService').hidden = true;
+  }
   renderChain();
   renderGrid();
   renderEvents();
@@ -1075,8 +1174,8 @@ async function refresh(){
       return;
     }
     STATE = res;
-    if(res.proxy_online && typeof res.proxy_latency_ms === 'number'){
-      LATENCY_HISTORY.push(res.proxy_latency_ms);
+    if(res.proxy_upstream_online && typeof res.proxy_upstream_latency_ms === 'number'){
+      LATENCY_HISTORY.push(res.proxy_upstream_latency_ms);
       if(LATENCY_HISTORY.length > 30) LATENCY_HISTORY.shift();
     }
     render();
@@ -1092,6 +1191,9 @@ function openEditor(app){
   $('#fNote').value = app ? (app.note||'') : '';
   $('#inspectBox').className='inspect';
   $('#inspectBox').textContent='输入路径后自动识别网络栈类型';
+  const showFf = !!(app && app.effective_kind === 'firefox' && app.firefox_profile_dir);
+  $('#ffProfileTools').hidden = !showFf;
+  $('#ffProfilePath').textContent = showFf ? app.firefox_profile_dir : '';
   $('#editor').hidden=false;
   $('#fName').focus();
   if(app) inspect();
@@ -1227,11 +1329,12 @@ function openSettings(){
 }
 async function saveSettings(){
   const rawPort=$('#sPort').value.trim();
+  const rawListenPort=$('#sListenPort').value.trim();
   const body={
     proxy:{
       host:$('#sHost').value.trim(),
       port:rawPort === '' ? '' : Number(rawPort),
-      listen_port:Number($('#sListenPort').value),
+      listen_port:rawListenPort === '' ? '' : Number(rawListenPort),
       rules_file:$('#sRulesFile').value.trim(),
       enabled:STATE.proxy.enabled
     }
@@ -1248,6 +1351,83 @@ async function saveSettings(){
   }catch(e){
     toast('保存设置失败',{type:'err'});
     log('保存代理设置失败: '+e,'err');
+  }
+}
+async function openRulesModal(){
+  $('#rulesModal').hidden = false;
+  $('#rulesError').hidden = true;
+  $('#ruleTestResult').hidden = true;
+  $('#rulesContent').value = '读取中…';
+  $('#btnRulesSave').disabled = true;
+  try{
+    const r = await api('/api/rules');
+    $('#rulesPathLabel').textContent = r.path || 'rules.yaml';
+    $('#rulesContent').value = r.content || '';
+    if(r.error){
+      $('#rulesError').textContent = r.error;
+      $('#rulesError').hidden = false;
+    }
+    $('#rulesContent').focus();
+  }catch(e){
+    $('#rulesError').textContent = '读取规则文件失败: ' + e;
+    $('#rulesError').hidden = false;
+  }finally{
+    $('#btnRulesSave').disabled = false;
+  }
+}
+function closeRulesModal(){
+  $('#rulesModal').hidden = true;
+}
+async function testRuleMatch(){
+  const host = $('#ruleTestHost').value.trim();
+  const box = $('#ruleTestResult');
+  if(!host){
+    box.className = 'inspect warn';
+    box.textContent = '请输入要测试的域名或 URL';
+    box.hidden = false;
+    return;
+  }
+  try{
+    const r = await api('/api/rules/test', {host});
+    if(!r.ok){
+      box.className = 'inspect bad';
+      box.textContent = r.error || '测试失败';
+      box.hidden = false;
+      return;
+    }
+    box.className = 'inspect ' + (r.action === 'DIRECT' ? 'good' : 'warn');
+    box.textContent = `${r.host} → ${r.action === 'DIRECT' ? '直连 (DIRECT)' : '走代理 (PROXY)'} · 命中第 ${r.rule_index} 条：${r.rule}`;
+    box.hidden = false;
+  }catch(e){
+    box.className = 'inspect bad';
+    box.textContent = '测试失败: ' + e;
+    box.hidden = false;
+  }
+}
+async function saveRules(){
+  const btn = $('#btnRulesSave');
+  btn.disabled = true;
+  $('#rulesError').hidden = true;
+  try{
+    const r = await api('/api/rules', {content: $('#rulesContent').value});
+    if(!r.ok){
+      $('#rulesError').textContent = r.error || '保存失败';
+      $('#rulesError').hidden = false;
+      toast(r.error || '规则校验失败', {type:'err'});
+      log('保存规则失败: ' + (r.error || ''), 'err');
+      return;
+    }
+    if(r.state) STATE = r.state;
+    render();
+    closeRulesModal();
+    log(`分流规则已更新（共 ${r.rule_count} 条）`, 'ok');
+    toast(`已保存规则（${r.rule_count} 条）`, {type:'ok'});
+  }catch(e){
+    $('#rulesError').textContent = '保存规则失败: ' + e;
+    $('#rulesError').hidden = false;
+    toast('保存规则失败', {type:'err'});
+  }finally{
+    btn.disabled = false;
   }
 }
 function openAdbSettings(){
@@ -1318,6 +1498,13 @@ $('#btnPickExe').onclick=async ()=>{
 };
 $('#btnSettings').onclick=openSettings;
 $('#btnProxySettings').onclick=openSettings;
+$('#btnEditRules').onclick=openRulesModal;
+$('#btnOpenRules').onclick=openRulesModal;
+$('#btnRulesCancel').onclick=closeRulesModal;
+$('#btnRulesSave').onclick=saveRules;
+$('#btnRuleTest').onclick=testRuleMatch;
+$('#ruleTestHost').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); testRuleMatch(); } });
+$('#rulesModal').onclick=e=>{ if(e.target.id==='rulesModal') closeRulesModal(); };
 $('#hopEntryBtn').onclick=openSettings;
 $('#mobileChainSummary').onclick=()=>$('#chainPanel').scrollIntoView({behavior:'smooth',block:'start'});
 $('#hopClashBtn').onclick=()=>{ loadAdbState(); $('#adbPanel').open = true; $('#adbPanel').scrollIntoView({behavior:'smooth',block:'nearest'}); };
@@ -1327,23 +1514,115 @@ $('#settings').onclick=e=>{ if(e.target.id==='settings') $('#settings').hidden=t
 $('#confirmCancel').onclick=()=>settleConfirm(false);
 $('#confirmOk').onclick=()=>settleConfirm(true);
 $('#confirm').onclick=e=>{ if(e.target.id==='confirm') settleConfirm(false); };
+$('#btnFfSync').onclick=async ()=>{
+  if(!EDIT_ID) return;
+  const yes = await askConfirm({
+    title:'同步本机 Firefox 配置',
+    body:'将把日常默认 Firefox 配置（账号、书签、插件等）覆盖同步到 DroidBridge 的独立配置目录，并保留代理设置。\n同步前请确保常规 Firefox 与代理版 Firefox 均已关闭。确定继续？',
+    okText:'开始同步'
+  });
+  if(!yes) return;
+  const btn = $('#btnFfSync');
+  btn.disabled = true;
+  try{
+    const r = await api('/api/app/firefox/sync',{id:EDIT_ID});
+    if(!r.ok){
+      toast(r.error||'同步失败',{type:'err'});
+      log('同步 Firefox 配置失败: '+(r.error||''),'err');
+      return;
+    }
+    if(r.state){ STATE = r.state; render(); }
+    toast(r.message||'已同步配置',{type:'ok'});
+    log(r.message||'已同步 Firefox 配置','ok');
+  }catch(e){
+    toast('同步配置失败',{type:'err'});
+    log('同步 Firefox 配置失败: '+e,'err');
+  }finally{
+    btn.disabled = false;
+  }
+};
+$('#btnFfOpenDir').onclick=async ()=>{
+  if(!EDIT_ID) return;
+  try{
+    const r = await api('/api/app/firefox/open-profile',{id:EDIT_ID});
+    if(!r.ok){ toast(r.error||'打开目录失败',{type:'err'}); return; }
+    log('已打开 Firefox 配置目录: '+r.path,'dim');
+  }catch(e){
+    toast('打开目录失败',{type:'err'});
+  }
+};
+$('#adbDeviceSelect').onchange=async e=>{
+  SELECTED_ADB_SERIAL = e.target.value;
+  renderAdb();
+  try{ await api('/api/settings',{adb_serial:SELECTED_ADB_SERIAL}); }catch(err){}
+};
 $('#btnAdbSettings').onclick=openAdbSettings;
 $('#btnAdbSettingsCancel').onclick=closeAdbSettings;
 $('#btnAdbSettingsSave').onclick=saveAdbSettings;
 $('#btnAdbRefresh').onclick=loadAdbState;
 $('#btnAdbForward').onclick=async ()=>{
-  const r = await api('/api/adb/forward',{});
-  if(!r.ok){ toast(r.error||'建立转发失败',{type:'err'}); log('建立 ADB 转发失败: '+(r.error||''),'err'); return; }
-  toast('已建立转发 '+r.local,{type:'ok'});
-  log(`已建立 ADB 转发 ${r.local} → ${r.remote}（${r.serial}）`,'ok');
-  loadAdbState();
+  const btn=$('#btnAdbForward');
+  btn.disabled=true;
+  try{
+    const r = await api('/api/adb/forward',{serial:SELECTED_ADB_SERIAL});
+    if(!r.ok){ toast(r.error||'建立转发失败',{type:'err'}); log('建立 ADB 转发失败: '+(r.error||''),'err'); return; }
+    toast('已建立转发 '+r.local,{type:'ok'});
+    log(`已建立 ADB 转发 ${r.local} → ${r.remote}（${r.serial}）`,'ok');
+    await Promise.all([loadAdbState(), refresh()]);
+  }finally{
+    if(ADB_STATE) renderAdb(); else btn.disabled=false;
+  }
 };
 $('#btnAdbUnforward').onclick=async ()=>{
-  const r = await api('/api/adb/unforward',{});
-  if(!r.ok){ toast(r.error||'删除转发失败',{type:'err'}); log('删除 ADB 转发失败: '+(r.error||''),'err'); return; }
-  toast('已删除转发 '+r.local,{type:'ok'});
-  log(`已删除 ADB 转发 ${r.local}`,'ok');
-  loadAdbState();
+  const btn=$('#btnAdbUnforward');
+  btn.disabled=true;
+  try{
+    const r = await api('/api/adb/unforward',{serial:SELECTED_ADB_SERIAL});
+    if(!r.ok){ toast(r.error||'删除转发失败',{type:'err'}); log('删除 ADB 转发失败: '+(r.error||''),'err'); return; }
+    toast('已删除转发 '+r.local,{type:'ok'});
+    log(`已删除 ADB 转发 ${r.local}`,'ok');
+    await Promise.all([loadAdbState(), refresh()]);
+  }finally{
+    if(ADB_STATE) renderAdb(); else btn.disabled=false;
+  }
+};
+$('#eventsBody').addEventListener('click',async e=>{
+  const btn = e.target.closest('button[data-qhost]');
+  if(!btn || btn.disabled) return;
+  const host = btn.dataset.qhost;
+  const action = btn.dataset.qact;
+  btn.disabled = true;
+  try{
+    const r = await api('/api/rules/quick-add',{host, action});
+    if(!r.ok){ toast(r.error||'添加规则失败',{type:'err'}); log('添加规则失败: '+(r.error||''),'err'); return; }
+    if(r.state){ STATE = r.state; render(); }
+    toast(r.message||'规则已更新',{type:'ok'});
+    log(r.message||`已更新规则：${host} -> ${action}`,'ok');
+  }catch(err){
+    toast('添加规则失败',{type:'err'});
+    log('添加规则失败: '+err,'err');
+  }finally{
+    btn.disabled = false;
+  }
+});
+$('#btnQuitService').onclick=async ()=>{
+  const hasRunning = !!(STATE && STATE.apps && STATE.apps.some(a => a.running || a.profile_running));
+  const yes = await askConfirm({
+    title:'彻底退出 DroidBridge',
+    body: hasRunning
+      ? '当前仍有应用运行中，彻底退出将关闭 127.0.0.1 分流代理并导致这些应用断网。确定退出？'
+      : '彻底退出后将停止本地分流服务与系统托盘图标。确定退出？',
+    okText:'彻底退出',
+    danger:true
+  });
+  if(!yes) return;
+  try{
+    await api('/api/quit',{force:true});
+    toast('DroidBridge 服务正在退出');
+    setTimeout(()=>window.close(), 200);
+  }catch(e){
+    toast('退出失败: '+e,{type:'err'});
+  }
 };
 $('#tabEvents').onclick=()=>{
   applyLogCollapse(true);
@@ -1421,6 +1700,7 @@ $('#proxyEnabled').onchange=async e=>{
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if(!$('#confirm').hidden){ settleConfirm(false); return; }
+    if(!$('#rulesModal').hidden){ closeRulesModal(); return; }
     if(!$('#editor').hidden){ closeEditor(); return; }
     if(!$('#settings').hidden){ $('#settings').hidden=true; return; }
     if(!$('#adbSettings').hidden){ closeAdbSettings(); return; }
