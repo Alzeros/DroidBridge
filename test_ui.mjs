@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
@@ -97,8 +98,42 @@ async function startServer() {
   const iconPng = await readFile(path.join(root, 'droidbridge.png'));
   const iconIco = await readFile(path.join(root, 'droidbridge.ico'));
   const requests = [];
+  const wsMessages = [];
+  const wsClients = new Set();
   let rulesText = 'rules:\n  - DOMAIN-SUFFIX,baidu.com,DIRECT\n  - MATCH,PROXY\n';
   let exitIpCalls = 0;
+  let phoneStatus = {
+    ok: true,
+    running: false,
+    starting: false,
+    serial: '',
+    device_name: '',
+    width: 0,
+    height: 0,
+    screen_off: false,
+    quality: '1080',
+    max_fps: 60,
+    clients: 0,
+    server_ready: true,
+    error: '',
+  };
+  const sendWsText = (sock, text) => {
+    const payload = Buffer.from(text, 'utf8');
+    let header;
+    if (payload.length < 126) {
+      header = Buffer.from([0x81, payload.length]);
+    } else {
+      header = Buffer.alloc(4);
+      header[0] = 0x81;
+      header[1] = 126;
+      header.writeUInt16BE(payload.length, 2);
+    }
+    try { sock.write(Buffer.concat([header, payload])); } catch {}
+  };
+  const broadcastPhoneStatus = () => {
+    const text = JSON.stringify({ type: 'status', ...phoneStatus });
+    for (const sock of wsClients) sendWsText(sock, text);
+  };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -129,6 +164,49 @@ async function startServer() {
     }
     if (url.pathname === '/api/adb/state') {
       res.end(JSON.stringify(adbState));
+      return;
+    }
+    if (url.pathname === '/api/phone/status') {
+      res.end(JSON.stringify(phoneStatus));
+      return;
+    }
+    if (url.pathname === '/api/phone/start') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      const q = parsed.quality || '1080';
+      const dims = q === '720' ? [344, 720] : q === 'native' ? [1440, 3040] : [512, 1080];
+      phoneStatus = {
+        ...phoneStatus,
+        running: true,
+        serial: parsed.serial || 'SERIAL123',
+        device_name: 'SM-G9730',
+        width: dims[0],
+        height: dims[1],
+        quality: q,
+        max_fps: Number(parsed.max_fps || 60),
+        screen_off: !!parsed.screen_off,
+        error: '',
+      };
+      broadcastPhoneStatus();
+      res.end(JSON.stringify({ ok: true, status: phoneStatus }));
+      return;
+    }
+    if (url.pathname === '/api/phone/stop') {
+      requests.push({ path: url.pathname });
+      phoneStatus = {
+        ...phoneStatus,
+        running: false,
+        serial: '',
+        device_name: '',
+        width: 0,
+        height: 0,
+        screen_off: false,
+        error: '',
+      };
+      broadcastPhoneStatus();
+      res.end(JSON.stringify({ ok: true, status: phoneStatus }));
       return;
     }
     if (url.pathname === '/api/exit-ip') {
@@ -256,8 +334,68 @@ async function startServer() {
     res.statusCode = 404;
     res.end(JSON.stringify({ error: 'not found' }));
   });
+  server.on('upgrade', (req, socket) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    if (url.pathname !== '/api/phone/ws') {
+      socket.destroy();
+      return;
+    }
+    const key = req.headers['sec-websocket-key'];
+    const accept = createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+    socket.write(
+      'HTTP/1.1 101 Switching Protocols\r\n'
+      + 'Upgrade: websocket\r\n'
+      + 'Connection: Upgrade\r\n'
+      + `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
+    );
+    wsClients.add(socket);
+    sendWsText(socket, JSON.stringify({ type: 'status', ...phoneStatus }));
+    let buf = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buf = Buffer.concat([buf, chunk]);
+      while (buf.length >= 2) {
+        const opcode = buf[0] & 0x0F;
+        const masked = !!(buf[1] & 0x80);
+        let len = buf[1] & 0x7F;
+        let offset = 2;
+        if (len === 126) {
+          if (buf.length < 4) return;
+          len = buf.readUInt16BE(2);
+          offset = 4;
+        } else if (len === 127) {
+          if (buf.length < 10) return;
+          len = Number(buf.readBigUInt64BE(2));
+          offset = 10;
+        }
+        const need = offset + (masked ? 4 : 0) + len;
+        if (buf.length < need) return;
+        let payload = buf.subarray(offset + (masked ? 4 : 0), need);
+        if (masked) {
+          const mask = buf.subarray(offset, offset + 4);
+          payload = Buffer.from(payload.map((b, i) => b ^ mask[i & 3]));
+        }
+        buf = buf.subarray(need);
+        if (opcode === 0x8) {
+          socket.end();
+          return;
+        }
+        if (opcode === 0x1) {
+          try {
+            const msg = JSON.parse(payload.toString('utf8'));
+            wsMessages.push(msg);
+            if (msg.type === 'display_power') {
+              phoneStatus.screen_off = !msg.on;
+              broadcastPhoneStatus();
+            }
+          } catch {}
+        }
+      }
+    });
+    socket.on('close', () => wsClients.delete(socket));
+    socket.on('error', () => wsClients.delete(socket));
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { server, requests, url: `http://127.0.0.1:${server.address().port}` };
+  return { server, requests, wsMessages, url: `http://127.0.0.1:${server.address().port}` };
 }
 
 async function startBrowser(browser) {
@@ -383,16 +521,18 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
       appsVisible: !document.querySelector('#viewApps').hidden,
       trafficHidden: document.querySelector('#viewTraffic').hidden,
       rulesHidden: document.querySelector('#viewRules').hidden,
+      phoneHidden: document.querySelector('#viewPhone').hidden,
       settingsHidden: document.querySelector('#viewSettings').hidden,
     }))()`);
     assert.deepEqual(shell, {
-      navCount: 4,
+      navCount: 5,
       workspace: true,
       statusRail: true,
       railPanels: 1,
       appsVisible: true,
       trafficHidden: true,
       rulesHidden: true,
+      phoneHidden: true,
       settingsHidden: true,
     });
   });
@@ -522,7 +662,7 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
 });
 
 test('DroidBridge dashboard live chain, search, routing feed and undo', { timeout: 60000 }, async (t) => {
-  const { server, requests, url } = await startServer();
+  const { server, requests, wsMessages, url } = await startServer();
   const browser = await startBrowser(findBrowser());
   t.after(async () => {
     await browser.close();
@@ -576,6 +716,10 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
 
     await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '2', bubbles: true }))");
     assert.equal(await browser.evaluate("document.querySelector('#viewTraffic').hidden"), false);
+    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '4', bubbles: true }))");
+    assert.equal(await browser.evaluate("document.querySelector('#viewPhone').hidden"), false);
+    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '5', bubbles: true }))");
+    assert.equal(await browser.evaluate("document.querySelector('#viewSettings').hidden"), false);
     await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))");
     assert.equal(await browser.evaluate("document.querySelector('#viewApps').hidden"), false);
   });
@@ -936,9 +1080,140 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.match(saveReq.body.content, /DOMAIN,new\.test,DIRECT/);
   });
 
+  await t.test('phone screen view connects via WS, forwards controls, guards IME composition Enter, and pauses off-tab', async () => {
+    await browser.evaluate("document.querySelector('#navPhone').click()");
+    await browser.waitFor("document.querySelector('#viewPhone').hidden === false");
+
+    const idle = await browser.evaluate(`(() => ({
+      emptyVisible: !document.querySelector('#phoneEmpty').hidden,
+      liveHidden: document.querySelector('#phoneLiveWrap').hidden,
+      liveDotHidden: document.querySelector('#navPhoneLive').hidden,
+      qualityLabels: [...document.querySelectorAll('#phoneQuality option')].map(o => o.textContent.trim()),
+      fpsLabels: [...document.querySelectorAll('#phoneMaxFps option')].map(o => o.textContent.trim()),
+      emptyDesc: document.querySelector('#phoneEmptyDesc').textContent,
+    }))()`);
+    assert.equal(idle.emptyVisible, true);
+    assert.equal(idle.liveHidden, true);
+    assert.equal(idle.liveDotHidden, true);
+    assert.ok(idle.qualityLabels.some((s) => s.includes('长边 1080')));
+    assert.ok(idle.fpsLabels.some((s) => s.includes('上限 60 FPS')));
+    assert.match(idle.emptyDesc, /Test Phone/);
+    if (process.env.DROIDBRIDGE_UI_SHOT_PHONE_IDLE) {
+      const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(process.env.DROIDBRIDGE_UI_SHOT_PHONE_IDLE, Buffer.from(shot.data, 'base64'));
+    }
+
+    // Connect phone mirror
+    await browser.evaluate("document.querySelector('#btnPhoneToggle').click()");
+    await browser.waitFor("document.querySelector('#phoneLiveWrap').hidden === false && PHONE_WS && PHONE_WS.readyState === 1");
+    const connected = await browser.evaluate(`(() => ({
+      liveDotVisible: !document.querySelector('#navPhoneLive').hidden,
+      statSize: document.querySelector('#phoneStatSize').textContent,
+      metaSub: document.querySelector('#phoneMetaSub').textContent,
+      toggleText: document.querySelector('#btnPhoneToggle').textContent,
+    }))()`);
+    assert.equal(connected.liveDotVisible, true);
+    assert.equal(connected.statSize, '512×1080');
+    assert.match(connected.metaSub, /SM-G9730.*512×1080.*上限 60/);
+    assert.equal(connected.toggleText, '断开连接');
+
+    // Paint a mock phone frame so live screenshot looks realistic if captured
+    if (process.env.DROIDBRIDGE_UI_SHOT_PHONE_LIVE) {
+      await browser.evaluate(`(() => {
+        const c = document.querySelector('#phoneCanvas');
+        const ctx = c.getContext('2d');
+        const g = ctx.createLinearGradient(0, 0, c.width, c.height);
+        g.addColorStop(0, '#1e3a8a'); g.addColorStop(1, '#0f766e');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 42px sans-serif';
+        ctx.fillText('12:30', 44, 160);
+        ctx.font = '24px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.82)';
+        ctx.fillText('Samsung SM-G9730 · 512×1080', 44, 210);
+      })()`);
+      const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(process.env.DROIDBRIDGE_UI_SHOT_PHONE_LIVE, Buffer.from(shot.data, 'base64'));
+    }
+
+    const waitWs = async (predicate) => {
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        const found = wsMessages.findLast(predicate);
+        if (found) return found;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      return null;
+    };
+
+    // Canvas touch down/up, right-click back, wheel scroll, focused digit does not switch view
+    await browser.evaluate(`(() => {
+      const c = document.querySelector('#phoneCanvas');
+      const r = c.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      c.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1, clientX: cx, clientY: cy }));
+      c.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerId: 1, clientX: cx, clientY: cy }));
+      c.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: cx, clientY: cy, deltaY: 150 }));
+      c.focus();
+      c.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true, cancelable: true }));
+    })()`);
+    assert.equal(await browser.evaluate("document.querySelector('#viewPhone').hidden"), false, 'digit 1 on focused canvas must not switch tab');
+    const touchDown = await waitWs((m) => m.type === 'touch' && m.action === 'down');
+    const scrollMsg = await waitWs((m) => m.type === 'scroll');
+    const textKey = await waitWs((m) => m.type === 'text' && m.text === '1');
+    assert.ok(touchDown);
+    assert.equal(touchDown.width, 512);
+    assert.equal(touchDown.height, 1080);
+    assert.ok(scrollMsg && scrollMsg.dy < 0);
+    assert.ok(textKey);
+
+    // Screen-off button toggles display_power and updates badge
+    await browser.evaluate("document.querySelector('#btnPhoneScreenOff').click()");
+    const pwrOff = await waitWs((m) => m.type === 'display_power' && m.on === false);
+    assert.ok(pwrOff);
+    await browser.waitFor("document.querySelector('#phoneCtrlBadge').textContent === '息屏中'");
+
+    // IME composition acceptance test: 1st Enter during IME composing MUST NOT send; 2nd Enter after compositionend MUST send
+    const beforeClipCount = wsMessages.filter((m) => m.type === 'clipboard').length;
+    await browser.evaluate(`(() => {
+      const ta = document.querySelector('#phoneTextInput');
+      ta.focus();
+      ta.value = '你好世界';
+      ta.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+    })()`);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal(wsMessages.filter((m) => m.type === 'clipboard').length, beforeClipCount, 'Enter during IME composition must not send');
+    assert.equal(await browser.evaluate("document.querySelector('#phoneTextInput').value"), '你好世界');
+
+    await browser.evaluate(`(() => {
+      const ta = document.querySelector('#phoneTextInput');
+      ta.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: false, bubbles: true, cancelable: true }));
+    })()`);
+    const clipMsg = await waitWs((m) => m.type === 'clipboard' && m.text === '你好世界' && m.paste === true);
+    assert.ok(clipMsg, '2nd Enter after IME compositionend must send clipboard paste');
+    assert.equal(await browser.evaluate("document.querySelector('#phoneTextInput').value"), '');
+
+    // Switching away pauses video while keeping green live dot; switching back resumes
+    await browser.evaluate("document.querySelector('#navApps').click()");
+    const pauseMsg = await waitWs((m) => m.type === 'pause' && m.paused === true);
+    assert.ok(pauseMsg);
+    assert.equal(await browser.evaluate("document.querySelector('#navPhoneLive').hidden"), false);
+    await browser.evaluate("document.querySelector('#navPhone').click()");
+    const resumeMsg = await waitWs((m) => m.type === 'pause' && m.paused === false);
+    assert.ok(resumeMsg);
+
+    // Disconnect stops session and hides green live dot
+    await browser.evaluate("document.querySelector('#btnPhoneToggle').click()");
+    await browser.waitFor("document.querySelector('#phoneEmpty').hidden === false");
+    assert.equal(await browser.evaluate("document.querySelector('#navPhoneLive').hidden"), true);
+    assert.ok(requests.some((r) => r.path === '/api/phone/stop'));
+  });
+
   await t.test('multi-device ADB selector in settings view passes serial and refreshes proxy chain immediately', async () => {
     await browser.evaluate("document.querySelector('#navSettings').click()");
     await browser.waitFor("document.querySelector('#viewSettings').hidden === false");
+    await browser.evaluate("loadAdbState()");
     if (process.env.DROIDBRIDGE_UI_SHOT_SETTINGS) {
       const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_SETTINGS, Buffer.from(shot.data, 'base64'));
@@ -1069,7 +1344,7 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_MOBILE, Buffer.from(shot.data, 'base64'));
     }
 
-    for (const navId of ['#navTraffic', '#navRules', '#navSettings']) {
+    for (const navId of ['#navTraffic', '#navRules', '#navPhone', '#navSettings']) {
       await browser.evaluate(`document.querySelector(${JSON.stringify(navId)}).click()`);
       await new Promise((resolve) => setTimeout(resolve, 80));
       const overflow = await browser.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1');

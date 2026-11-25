@@ -39,6 +39,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
 
+import scrcpy_bridge
+
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
 RULES_EXAMPLE_PATH = ROOT / "rules.example.yaml"
@@ -1791,6 +1793,7 @@ _shutdown_lock = threading.Lock()
 
 def _do_shutdown():
     with _shutdown_lock:
+        _phone_mirror.shutdown()
         if _server:
             _server.shutdown()
         stop_proxy_server()
@@ -2528,6 +2531,9 @@ class AdbTool:
         return {"serial": device["serial"], "local": "tcp:%d" % port}
 
 
+_phone_mirror = scrcpy_bridge.PhoneMirrorManager(adb_factory=AdbTool)
+
+
 # ------------------------------------------------------------------ http ----
 
 class Handler(BaseHTTPRequestHandler):
@@ -2662,6 +2668,35 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(AdbTool(load_config()).state())
                 return
 
+            if parsed.path == "/api/phone/status":
+                self.send_json(_phone_mirror.status())
+                return
+
+            if parsed.path == "/api/phone/ws":
+                if not self._check_origin():
+                    self.send_json({"ok": False, "error": "forbidden origin"}, 403)
+                    return
+                upgrade = (self.headers.get("Upgrade") or "").strip().lower()
+                conn_hdr = (self.headers.get("Connection") or "").lower()
+                ws_ver = (self.headers.get("Sec-WebSocket-Version") or "").strip()
+                ws_key = (self.headers.get("Sec-WebSocket-Key") or "").strip()
+                if upgrade != "websocket" or "upgrade" not in conn_hdr or ws_ver != "13" or not ws_key:
+                    self.send_json({"ok": False, "error": "invalid websocket handshake"}, 400)
+                    return
+                accept = scrcpy_bridge.ws_accept_key(ws_key)
+                handshake = (
+                    "HTTP/1.1 101 Switching Protocols\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    f"Sec-WebSocket-Accept: {accept}\r\n"
+                    "\r\n"
+                ).encode("ascii")
+                self.wfile.write(handshake)
+                self.wfile.flush()
+                self.close_connection = True
+                _phone_mirror.handle_websocket(scrcpy_bridge.WebSocketConn(self.connection))
+                return
+
             if parsed.path == "/api/exit-ip":
                 self.send_json(query_exit_ip(load_config()))
                 return
@@ -2782,6 +2817,30 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(exc)}, 400)
                 return
             self.send_json({"ok": True, **result})
+            return
+
+        if path == "/api/phone/start":
+            serial = str(body.get("serial") or "").strip()
+            quality = body.get("quality")
+            max_fps = body.get("max_fps")
+            screen_off = bool(body.get("screen_off", False))
+            try:
+                st = _phone_mirror.start(
+                    load_config(),
+                    serial=serial,
+                    quality=quality,
+                    max_fps=max_fps,
+                    screen_off=screen_off,
+                )
+            except scrcpy_bridge.ScrcpyError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            self.send_json({"ok": True, "status": st})
+            return
+
+        if path == "/api/phone/stop":
+            st = _phone_mirror.stop()
+            self.send_json({"ok": True, "status": st})
             return
 
         if path == "/api/settings":
@@ -3667,6 +3726,8 @@ def idle_watchdog(timeout=180):
         time.sleep(15)
         if is_tray_active():
             continue
+        if _phone_mirror.status().get("running"):
+            continue
         now_ts = time.time()
         if now_ts - _last_request <= timeout or now_ts - _last_proxy_activity <= timeout:
             continue
@@ -3705,6 +3766,7 @@ def main():
     try:
         _server.serve_forever(poll_interval=0.3)
     finally:
+        _phone_mirror.shutdown()
         stop_tray()
         _server.server_close()
         stop_proxy_server()
