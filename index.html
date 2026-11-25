@@ -139,21 +139,22 @@
     color:hsl(var(--muted));font-size:var(--text-sm);outline:none;cursor:pointer}
   .sort-select:focus{border-color:hsl(var(--primary))}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--space-4)}
-  .card{display:flex;flex-direction:column;background:hsl(var(--surface));border:1px solid hsl(var(--line));border-radius:var(--radius-lg);
-    padding:var(--space-4);box-shadow:var(--shadow-card);position:relative;overflow:hidden;
-    transition:transform var(--transition),box-shadow var(--transition),border-color var(--transition)}
+  .grid{display:flex;flex-direction:column;background:hsl(var(--surface));border:1px solid hsl(var(--line));
+    border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden}
+  .grid.is-empty{background:transparent;border:0;box-shadow:none;overflow:visible}
+  .card{display:flex;align-items:center;gap:14px;padding:13px 18px;background:transparent;border:0;
+    border-bottom:1px solid hsl(var(--line) / .75);position:relative;transition:background var(--transition)}
+  .card:last-child{border-bottom:0}
   .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent;
     transition:background var(--transition)}
-  .card:hover{transform:translateY(-2px);border-color:hsl(215 24% 84%);box-shadow:0 10px 28px hsl(222 47% 11% / .08)}
-  .card.running::before{background:hsl(var(--amber))}
-  .card.running{border-color:hsl(var(--amber) / .35)}
+  .card:hover{background:hsl(220 45% 98.2%)}
+  .card.invalid{background:hsl(var(--red-soft) / .42)}
   .card.invalid::before{background:hsl(var(--red))}
-  .card.enter{animation:cardIn .45s cubic-bezier(.2,.7,.3,1) backwards}
-  @keyframes cardIn{from{opacity:0}to{opacity:1}}
-  .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2)}
-  .avatar{position:relative;width:40px;height:40px;border-radius:var(--radius-md);display:grid;place-items:center;
-    color:hsl(0 0% 100%);font-weight:700;font-size:var(--text-lg);overflow:hidden;flex:none}
+  .card.enter{animation:cardIn .28s cubic-bezier(.2,.7,.3,1) backwards}
+  @keyframes cardIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .avatar{position:relative;width:40px;height:40px;border-radius:11px;display:grid;place-items:center;
+    color:hsl(0 0% 100%);font-weight:700;font-size:var(--text-lg);overflow:hidden;flex:none;
+    box-shadow:0 1px 2px hsl(222 47% 11% / .06)}
   .avatar.has-icon{background:hsl(var(--surface-soft))!important;border:1px solid hsl(var(--line))}
   .avatar-img{position:absolute;inset:5px;width:calc(100% - 10px);height:calc(100% - 10px);
     object-fit:contain;opacity:0;transition:opacity var(--transition)}
@@ -168,26 +169,48 @@
   .badge.bad{background:hsl(var(--red-soft));color:hsl(var(--red))}
   .badge.proxy{background:hsl(var(--primary-soft));color:hsl(var(--primary-hover))}
   .badge.direct{background:hsl(var(--teal-soft));color:hsl(var(--teal))}
-  .run-dot{width:6px;height:6px;border-radius:50%;background:hsl(var(--amber));display:inline-block;
-    animation:pulse-amber 2s infinite}
-  @keyframes pulse-amber{50%{box-shadow:0 0 0 4px hsl(var(--amber) / 0)}0%,100%{box-shadow:0 0 0 0 hsl(var(--amber) / .3)}}
-  .card-name{margin:var(--space-3) 0 var(--space-1);font-weight:650;font-size:15px}
-  .card-path{color:hsl(var(--muted));font-size:var(--text-xs);word-break:break-all;
+  .card-main{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
+  .card-head{display:flex;align-items:center;gap:8px;min-width:0}
+  .card-name{font-weight:620;font-size:14.5px;line-height:1.35;letter-spacing:-.01em;color:hsl(var(--text));
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .stack-tag{display:inline-flex;align-items:center;font-size:11px;font-weight:500;line-height:1;
+    padding:3px 7px;border-radius:6px;background:hsl(220 20% 95%);color:hsl(215 16% 46%);
+    flex:none;white-space:nowrap}
+  .stack-tag.electron{background:hsl(221 70% 96%);color:hsl(221 48% 46%)}
+  .stack-tag.firefox{background:hsl(26 85% 96%);color:hsl(24 58% 43%)}
+  .card-note{color:hsl(var(--muted));font-size:12.5px;line-height:1.4;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .card-note{margin-top:var(--space-1);color:hsl(var(--muted));font-size:var(--text-sm);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .card-meta{display:flex;gap:var(--space-2);flex-wrap:wrap;margin:var(--space-3) 0 var(--space-3);font-size:var(--text-xs);align-items:center}
+  .card-status{display:flex;align-items:center;gap:6px;flex:none}
+  .card-status:empty{display:none}
+  .status-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:550;line-height:1;
+    padding:5px 9px;border-radius:999px;white-space:nowrap}
+  .status-pill.running{background:hsl(142 72% 94%);color:hsl(142 68% 28%);border:1px solid hsl(142 52% 84%)}
+  .status-pill.neutral{background:hsl(220 20% 95%);color:hsl(var(--muted));border:1px solid hsl(var(--line))}
+  .status-pill.bad{background:hsl(var(--red-soft));color:hsl(var(--red));border:1px solid hsl(var(--red) / .2)}
+  .run-dot{width:6px;height:6px;border-radius:50%;background:hsl(142 70% 40%);display:inline-block;flex:none;
+    animation:pulse-green 2.2s infinite}
+  .status-pill.neutral .run-dot{background:hsl(var(--subtle));animation:none}
+  @keyframes pulse-green{50%{box-shadow:0 0 0 4px hsl(142 70% 40% / 0)}0%,100%{box-shadow:0 0 0 0 hsl(142 70% 40% / .28)}}
   .ok{color:hsl(var(--green))} .bad{color:hsl(var(--red))} .warn{color:hsl(var(--amber))} .muted{color:hsl(var(--muted))}
-  .card-actions{display:flex;flex-direction:column;gap:var(--space-2);margin-top:auto;
-    border-top:1px solid hsl(var(--line));padding-top:var(--space-3)}
-  .card-actions .btn.primary{width:100%;min-width:0}
-  .card-secondary{display:flex;align-items:center;gap:2px;min-width:0}
-  .card-secondary .btn.tiny{border-color:transparent;background:transparent;color:hsl(var(--muted));
-    padding:6px 7px;border-radius:7px;font-weight:500;text-align:left}
-  .card-secondary .btn.tiny:hover{border-color:transparent;background:hsl(var(--surface-soft));color:hsl(var(--text))}
-  .card-secondary .btn.danger{color:hsl(var(--muted));margin-left:auto}
+  .card-actions{display:flex;align-items:center;gap:10px;flex:none}
+  .btn-launch{border:1px solid hsl(var(--primary) / .18);background:hsl(var(--primary-soft));color:hsl(var(--primary));
+    padding:7px 14px;border-radius:9px;font-size:13px;font-weight:600;line-height:1.2;
+    display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;
+    transition:background var(--transition),border-color var(--transition),color var(--transition),box-shadow var(--transition),transform var(--transition)}
+  .btn-launch svg{width:11px;height:11px;flex:none;display:block}
+  .btn-launch:hover:not(:disabled){background:hsl(var(--primary));border-color:hsl(var(--primary));color:hsl(0 0% 100%);
+    box-shadow:0 3px 10px hsl(var(--primary) / .24)}
+  .btn-launch:active:not(:disabled){transform:translateY(1px)}
+  .btn-launch:disabled{opacity:.45;cursor:not-allowed}
+  .card-secondary{display:flex;align-items:center;gap:2px;padding-left:8px;border-left:1px solid hsl(var(--line) / .75);
+    opacity:.44;transition:opacity var(--transition)}
+  .card:hover .card-secondary,.card:focus-within .card-secondary{opacity:1}
+  @media (hover:none){.card-secondary{opacity:1}}
+  .card-secondary .btn.icon{width:32px;height:32px;padding:0;border-color:transparent;background:transparent;
+    color:hsl(var(--muted));border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
+  .card-secondary .btn.icon:hover{border-color:transparent;background:hsl(220 24% 93%);color:hsl(var(--text))}
+  .card-secondary .btn.danger{color:hsl(var(--muted))}
   .card-secondary .btn.danger:hover{background:hsl(var(--red-soft));color:hsl(var(--red))}
-  .card-secondary .btn.icon{min-width:32px;min-height:32px;justify-content:center;padding:6px}
   .empty{grid-column:1/-1;text-align:center;padding:44px var(--space-5);color:hsl(var(--muted));
     background:hsl(var(--surface));border:1px dashed hsl(215 24% 82%);border-radius:var(--radius-lg)}
   .empty-art{width:52px;height:52px;margin:0 auto var(--space-3);border-radius:16px;display:grid;place-items:center;
@@ -360,7 +383,12 @@
     .app-main{padding:var(--space-4) 18px var(--space-6)}
     .status-rail{grid-template-columns:1fr}
     .section-head{align-items:flex-start;flex-wrap:wrap}
-    .grid{grid-template-columns:1fr}
+    .card{flex-wrap:wrap;padding:12px 14px;gap:10px 12px}
+    .card-main{flex:1 1 calc(100% - 56px)}
+    .card-status:not(:empty){order:3;width:100%;padding-left:52px}
+    .card-actions{order:4;width:100%;justify-content:space-between;padding-top:8px;border-top:1px solid hsl(var(--line) / .65)}
+    .btn-launch{flex:1}
+    .card-secondary{opacity:1;border-left:0;padding-left:0}
     .brand p{display:none}
     .search{max-width:none}
     .diagnostics-head{align-items:flex-start;flex-direction:column}
@@ -891,10 +919,11 @@ function renderGrid(){
   $('#nRunning').textContent = running;
   $('#nIssue').textContent = issue;
   const sig = JSON.stringify([APP_FILTER, APP_SORT, APP_QUERY, apps.map(a =>
-    [a.id,a.name,a.exe,a.args,a.kind,a.note,a.exists,a.running,a.profile_running,a.effective_kind,a.detected_kind,a.native_browser,a.resolved_exe])]);
+    [a.id,a.name,a.exe,a.args,a.kind,a.note,a.exists,a.running,a.profile_running,a.effective_kind,a.detected_kind,a.native_browser,a.resolved_exe,a.evidence?.length||0])]);
   if(sig === lastGridSig) return;
   lastGridSig = sig;
   if(!apps.length){
+    grid.classList.toggle('is-empty', true);
     grid.innerHTML = `<div class="empty">
       <div class="empty-art"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg></div>
       <strong>还没有应用</strong>
@@ -910,6 +939,7 @@ function renderGrid(){
   else if(APP_SORT === 'running') list = list.slice().sort((a,b) =>
     ((b.running||b.profile_running)?1:0) - ((a.running||a.profile_running)?1:0));
   if(!list.length){
+    grid.classList.toggle('is-empty', true);
     grid.innerHTML = `<div class="empty">
       <strong>没有匹配的应用</strong>
       <p>换个关键词，或清除当前筛选。</p>
@@ -923,43 +953,63 @@ function renderGrid(){
     };
     return;
   }
+  grid.classList.remove('is-empty');
   const newIds = new Set(list.map(a => a.id));
   grid.innerHTML = list.map((a,idx)=>{
-    const kind=a.effective_kind;
-    const tag = kind==='electron' ? '<span class="badge electron">Electron / Chromium</span>'
-              : kind==='firefox'  ? '<span class="badge firefox">Firefox / Gecko</span>'
-                                  : '<span class="badge">通用</span>';
+    const kind = a.effective_kind;
+    const autoSuffix = a.kind==='auto' && (a.detected_kind==='electron'||a.detected_kind==='firefox') && a.evidence?.length
+      ? `（自动识别 ${a.evidence.length} 项特征）` : '';
+    const stackInfo = kind==='electron' && a.native_browser
+      ? { label:'Chromium', cls:'electron', title:'原生 Chromium 浏览器 · 环境变量 + --proxy-server 双注入' }
+      : kind==='electron'
+      ? { label:'Electron', cls:'electron', title:'Electron / Chromium · 环境变量 + --proxy-server 双注入' + autoSuffix }
+      : kind==='firefox'
+      ? { label:'Firefox', cls:'firefox', title:'Firefox / Gecko · 独立配置目录 + user.js 注入' + autoSuffix }
+      : { label:'通用', cls:'', title:'普通应用 · 环境变量注入' };
+    const stackTag = `<span class="stack-tag${stackInfo.cls?' '+stackInfo.cls:''}" title="${esc(stackInfo.title)}">${stackInfo.label}</span>`;
+
     const isRunning = a.running || a.profile_running;
-    const runBadge = kind==='firefox'
-      ? (a.profile_running ? '<span class="badge warn"><span class="run-dot"></span>代理实例运行中</span>'
-         : (a.running ? '<span class="badge"><span class="run-dot" style="background:hsl(var(--subtle))"></span>常规实例运行中</span>' : ''))
-      : (a.running ? '<span class="badge warn"><span class="run-dot"></span>运行中</span>' : '');
+    const statusParts = [];
+    if(!a.exists){
+      statusParts.push(`<span class="status-pill bad" title="文件不存在：${esc(a.exe)}">路径失效</span>`);
+    }
+    if(kind==='firefox'){
+      if(a.profile_running) statusParts.push('<span class="status-pill running" title="独立代理配置实例运行中"><span class="run-dot"></span>代理运行中</span>');
+      else if(a.running) statusParts.push('<span class="status-pill neutral" title="常规 Firefox 实例运行中，代理启动将使用独立配置目录互不干扰"><span class="run-dot"></span>常规运行中</span>');
+    }else if(a.running){
+      const runTip = kind==='electron' ? ' title="应用已在运行，单实例应用重新注入前需先关闭现有窗口"' : '';
+      statusParts.push(`<span class="status-pill running"${runTip}><span class="run-dot"></span>运行中</span>`);
+    }
+
     const iconImg = a.exists
       ? `<img class="avatar-img" src="/api/app/icon?id=${encodeURIComponent(a.id)}&v=${encodeURIComponent(a.resolved_exe)}&token=${encodeURIComponent(TOKEN)}" alt="" onload="this.parentElement.classList.add('has-icon')" onerror="this.remove()">`
       : '';
     const enter = prevIds.size && !prevIds.has(a.id) ? ' enter' : (!prevIds.size ? ' enter' : '');
-    const delay = enter ? ` style="animation-delay:${Math.min(idx*45,360)}ms"` : '';
+    const delay = enter ? ` style="animation-delay:${Math.min(idx*30,240)}ms"` : '';
     return `<div class="card${isRunning?' running':''}${a.exists?'':' invalid'}${enter}" data-id="${esc(a.id)}"${delay}>
-      <div class="card-top">
-        <div class="avatar" style="background:${colorOf(a.name)}">${iconImg}<span class="avatar-letter">${esc(initial(a.name))}</span></div>
-        ${tag}
+      <div class="avatar" style="background:${colorOf(a.name)}">${iconImg}<span class="avatar-letter">${esc(initial(a.name))}</span></div>
+      <div class="card-main" title="${esc(a.exe)}">
+        <div class="card-head">
+          <div class="card-name">${esc(a.name)}</div>
+          ${stackTag}
+        </div>
+        ${a.note ? `<div class="card-note" title="${esc(a.note)}&#10;${esc(a.exe)}">${esc(a.note)}</div>` : ''}
       </div>
-      <div class="card-name">${esc(a.name)}</div>
-      <div class="card-path" title="${esc(a.exe)}">${esc(a.exe)}</div>
-      ${a.note ? `<div class="card-note" title="${esc(a.note)}">${esc(a.note)}</div>` : ''}
-      <div class="card-meta">
-        <span class="${a.exists?'ok':'bad'}">${a.exists?'文件存在':'路径无效'}</span>
-        ${runBadge}
-        ${a.kind==='auto'&&a.native_browser?`<span class="ok" title="原生 Chromium 浏览器，使用环境变量与 --proxy-server 双注入">原生 Chromium 浏览器</span>`
-          :a.kind==='auto'&&(a.detected_kind==='electron'||a.detected_kind==='firefox')?`<span class="ok">自动识别 ${a.evidence.length} 项特征</span>`:''}
-      </div>
+      <div class="card-status">${statusParts.join('')}</div>
       <div class="card-actions">
-        <button class="btn primary" data-act="launch" ${a.exists?'':'disabled title="路径无效，请先编辑修正"'}>启动</button>
+        <button class="btn-launch" data-act="launch" ${a.exists?'':'disabled title="路径无效，请先编辑修正"'}>
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8a.75.75 0 0 1 1.14-.64l8 5.2a.75.75 0 0 1 0 1.28l-8 5.2A.75.75 0 0 1 4.5 13.2V2.8Z"/></svg>
+          <span>启动</span>
+        </button>
         <div class="card-secondary">
-          <button class="btn tiny" data-act="preview" title="预览注入明细">注入详情</button>
-          <button class="btn tiny" data-act="edit">编辑</button>
-          <button class="btn tiny danger icon" data-act="del" aria-label="删除 ${esc(a.name)}" title="删除">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+          <button class="btn icon" data-act="preview" title="注入详情" aria-label="注入详情">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </button>
+          <button class="btn icon" data-act="edit" title="编辑" aria-label="编辑">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          </button>
+          <button class="btn icon danger" data-act="del" aria-label="删除 ${esc(a.name)}" title="删除">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
           </button>
         </div>
       </div>

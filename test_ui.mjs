@@ -48,7 +48,7 @@ const state = {
     effective_kind: 'electron',
     exists: true,
     resolved_exe: 'C:\\Apps\\Example\\app.exe',
-    running: false,
+    running: true,
     profile_running: false,
     note: '用于界面布局验证',
     detected_kind: 'electron',
@@ -272,28 +272,40 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
     assert.equal(await browser.evaluate("!!document.querySelector('#dashboard #statusRail')"), true);
   });
 
-  await t.test('aligns card actions when only one card has a note', async () => {
+  await t.test('stacks rows vertically and aligns right action columns when only one row has a note', async () => {
     const aligned = await browser.evaluate(`(() => {
       const cards = [...document.querySelectorAll('.card')];
       const first = cards.find(card => card.querySelector('.card-note'));
       const second = cards.find(card => !card.querySelector('.card-note'));
+      const firstRect = first.getBoundingClientRect();
+      const secondRect = second.getBoundingClientRect();
       const firstActions = first.querySelector('.card-actions').getBoundingClientRect();
       const secondActions = second.querySelector('.card-actions').getBoundingClientRect();
-      return Math.abs(firstActions.top - secondActions.top) < 1;
+      const firstLaunch = first.querySelector('[data-act="launch"]').getBoundingClientRect();
+      const secondLaunch = second.querySelector('[data-act="launch"]').getBoundingClientRect();
+      return {
+        stacked: secondRect.top >= firstRect.bottom - 1,
+        actionsAligned: Math.abs(firstActions.right - secondActions.right) < 1,
+        launchAligned: Math.abs(firstLaunch.right - secondLaunch.right) < 1,
+      };
     })()`);
-    assert.equal(aligned, true);
+    assert.deepEqual(aligned, { stacked: true, actionsAligned: true, launchAligned: true });
   });
 
   await t.test('keeps secondary card actions quiet and on one row', async () => {
     const secondary = await browser.evaluate(`(() => {
       const preview = document.querySelector('.card [data-act="preview"]');
+      const edit = document.querySelector('.card [data-act="edit"]');
       const remove = document.querySelector('.card [data-act="del"]');
       const row = preview.closest('.card-secondary').getBoundingClientRect();
       const previewRect = preview.getBoundingClientRect();
       const removeRect = remove.getBoundingClientRect();
       return {
         sameRow: Math.abs(previewRect.top - removeRect.top) < 1,
-        previewLabel: preview.textContent.trim(),
+        previewLabel: preview.getAttribute('aria-label'),
+        editLabel: edit.getAttribute('aria-label'),
+        previewWidth: previewRect.width,
+        previewHeight: previewRect.height,
         deleteWidth: removeRect.width,
         deleteHeight: removeRect.height,
         deleteRightGap: row.right - removeRect.right,
@@ -301,6 +313,9 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
     })()`);
     assert.equal(secondary.sameRow, true);
     assert.equal(secondary.previewLabel, '注入详情');
+    assert.equal(secondary.editLabel, '编辑');
+    assert.ok(secondary.previewWidth >= 32, `preview target width: ${secondary.previewWidth}px`);
+    assert.ok(secondary.previewHeight >= 32, `preview target height: ${secondary.previewHeight}px`);
     assert.ok(secondary.deleteWidth >= 32, `delete target width: ${secondary.deleteWidth}px`);
     assert.ok(secondary.deleteHeight >= 32, `delete target height: ${secondary.deleteHeight}px`);
     assert.ok(secondary.deleteRightGap < 2, `delete action is not right-aligned: ${secondary.deleteRightGap}px`);
@@ -426,6 +441,8 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
 
   await t.test('labels native Chromium browsers without a marker count', async () => {
     const nativeBrowser = await browser.evaluate(`(() => {
+      const sampleCard = document.querySelector('.card[data-id="sample-app"]');
+      const sampleRunning = sampleCard.querySelector('.status-pill.running')?.textContent?.trim() || '';
       const app = {
         ...STATE.apps[0],
         id: 'chrome-preview',
@@ -434,18 +451,46 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
         detected_kind: 'electron',
         effective_kind: 'electron',
         native_browser: true,
+        running: false,
         evidence: ['browser binary'],
       };
-      STATE.apps.push(app);
+      const invalidApp = {
+        ...STATE.apps[1],
+        id: 'invalid-preview',
+        name: '失效应用',
+        exists: false,
+        running: false,
+      };
+      STATE.apps.push(app, invalidApp);
       renderGrid();
       const card = document.querySelector('.card[data-id="chrome-preview"]');
-      const meta = card.querySelector('.card-meta').textContent.replace(/\\s+/g, ' ').trim();
-      STATE.apps = STATE.apps.filter((item) => item.id !== 'chrome-preview');
+      const tagEl = card.querySelector('.stack-tag');
+      const tagText = tagEl?.textContent?.trim() || '';
+      const tagTitle = tagEl?.getAttribute('title') || '';
+      const visibleText = card.textContent.replace(/\\s+/g, ' ').trim();
+      const invalidCard = document.querySelector('.card[data-id="invalid-preview"]');
+      const invalidStatus = invalidCard.querySelector('.status-pill.bad')?.textContent?.trim() || '';
+      const invalidLaunchDisabled = !!invalidCard.querySelector('[data-act="launch"]')?.disabled;
+      STATE.apps = STATE.apps.filter((item) => item.id !== 'chrome-preview' && item.id !== 'invalid-preview');
       renderGrid();
-      return { meta, count: document.querySelectorAll('#appGrid .card').length };
+      return {
+        sampleRunning,
+        tagText,
+        tagTitle,
+        visibleText,
+        invalidStatus,
+        invalidLaunchDisabled,
+        count: document.querySelectorAll('#appGrid .card').length,
+      };
     })()`);
-    assert.match(nativeBrowser.meta, /原生 Chromium 浏览器/);
-    assert.doesNotMatch(nativeBrowser.meta, /项特征/);
+    assert.equal(nativeBrowser.sampleRunning, '运行中');
+    assert.equal(nativeBrowser.tagText, 'Chromium');
+    assert.match(nativeBrowser.tagTitle, /原生 Chromium 浏览器/);
+    assert.doesNotMatch(nativeBrowser.tagTitle, /项特征/);
+    assert.doesNotMatch(nativeBrowser.visibleText, /文件存在/);
+    assert.doesNotMatch(nativeBrowser.visibleText, /项特征/);
+    assert.equal(nativeBrowser.invalidStatus, '路径失效');
+    assert.equal(nativeBrowser.invalidLaunchDisabled, true);
     assert.equal(nativeBrowser.count, 2);
   });
 
