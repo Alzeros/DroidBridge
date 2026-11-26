@@ -39,6 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
 
+import conn_tracker
 import scrcpy_bridge
 
 ROOT = Path(__file__).resolve().parent
@@ -1455,6 +1456,7 @@ def make_state():
         "routing_rules_file": str(route_table.source) if route_table else "",
         "routing_rules_error": "; ".join(x for x in [route_table.error if route_table else "", _proxy_error] if x),
         "proxy_events": list(_proxy_events),
+        "active_connections": _conn_registry.count(),
         "proxy_online": online,
         "proxy_latency_ms": latency,
         "proxy_upstream_online": upstream_online,
@@ -1975,9 +1977,14 @@ def _read_chunked_body(stream, max_bytes=PROXY_MAX_BODY_BYTES) -> bytes:
     return bytes(body)
 
 
-def _relay_sockets(left, right, initial_right_to_left=b""):
+_conn_registry = conn_tracker.ConnectionRegistry()
+
+
+def _relay_sockets(left, right, initial_right_to_left=b"", conn=None):
     if initial_right_to_left:
         left.sendall(initial_right_to_left)
+        if conn is not None:
+            conn.add_rx(len(initial_right_to_left))
         _touch_proxy_activity()
     sockets = [left, right]
     last_activity = time.monotonic()
@@ -1997,6 +2004,11 @@ def _relay_sockets(left, right, initial_right_to_left=b""):
                 continue
             destination = right if source is left else left
             destination.sendall(data)
+            if conn is not None:
+                if source is left:
+                    conn.add_tx(len(data))
+                else:
+                    conn.add_rx(len(data))
             last_activity = time.monotonic()
             _touch_proxy_activity()
 
@@ -2104,9 +2116,21 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             response_started = True
             _record_proxy_event(host, action, rule=rule)
+            conn = _conn_registry.register(
+                host=host,
+                port=port,
+                protocol="HTTPS",
+                action=action,
+                rule=rule,
+                client_addr=self.client_address,
+                server_port=self.server.server_address[1],
+                left_sock=self.connection,
+                right_sock=upstream,
+            )
             try:
-                _relay_sockets(self.connection, upstream, initial)
+                _relay_sockets(self.connection, upstream, initial, conn=conn)
             finally:
+                _conn_registry.unregister(conn.id)
                 upstream.close()
         except (OSError, ValueError, TimeoutError) as exc:
             if not response_started:
@@ -2231,6 +2255,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         action = "ERROR"
         rule = ""
         response_started = False
+        conn = None
         try:
             table = self._table()
             if table is None:
@@ -2245,18 +2270,34 @@ class ProxyHandler(BaseHTTPRequestHandler):
             )
             upstream = self._connect(host, port) if action == "DIRECT" else self._connect(*table.upstream)
             upstream.settimeout(PROXY_IDLE_TIMEOUT)
-            upstream.sendall(request)
-            self.close_connection = True
-            while True:
-                chunk = upstream.recv(PROXY_BUFFER)
-                if not chunk:
-                    break
-                response_started = True
-                self.connection.sendall(chunk)
-                _touch_proxy_activity()
-            _record_proxy_event(host, action, rule=rule)
+            conn = _conn_registry.register(
+                host=host,
+                port=port,
+                protocol="HTTP",
+                action=action,
+                rule=rule,
+                client_addr=self.client_address,
+                server_port=self.server.server_address[1],
+                left_sock=self.connection,
+                right_sock=upstream,
+            )
+            try:
+                upstream.sendall(request)
+                conn.add_tx(len(request))
+                self.close_connection = True
+                while True:
+                    chunk = upstream.recv(PROXY_BUFFER)
+                    if not chunk:
+                        break
+                    response_started = True
+                    self.connection.sendall(chunk)
+                    conn.add_rx(len(chunk))
+                    _touch_proxy_activity()
+                _record_proxy_event(host, action, rule=rule)
+            finally:
+                _conn_registry.unregister(conn.id)
         except (OSError, ValueError, TimeoutError) as exc:
-            if not response_started:
+            if not response_started and not (conn is not None and conn.closed_by_user):
                 code = 400 if isinstance(exc, ValueError) else 502
                 msg = _format_proxy_error(exc, action, "无法转发代理请求")
                 self._fail(code, host, action, rule, msg)
@@ -2362,6 +2403,7 @@ def start_proxy_server(cfg):
 
 def stop_proxy_server():
     global _proxy_server, _proxy_thread
+    _conn_registry.close_all()
     server = _proxy_server
     if server is None:
         return
@@ -2700,6 +2742,10 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/exit-ip":
                 self.send_json(query_exit_ip(load_config()))
                 return
+
+            if parsed.path == "/api/connections":
+                self.send_json(_conn_registry.snapshot())
+                return
             
             if parsed.path == "/api/inspect":
                 exe = expand(query.get("path", [""])[0])
@@ -3000,6 +3046,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/events/clear":
             cleared = clear_proxy_events()
             self.send_json({"ok": True, "cleared": cleared, "state": make_state()})
+            return
+
+        if path == "/api/connections/close":
+            if body.get("all"):
+                closed = _conn_registry.close_all()
+            else:
+                conn_id = str(body.get("id") or "").strip()
+                if not conn_id:
+                    self.send_json({"ok": False, "error": "请指定要断开的连接 ID"}, 400)
+                    return
+                closed = _conn_registry.close_one(conn_id)
+            self.send_json({"ok": True, "closed": closed, **_conn_registry.snapshot()})
             return
 
         if path in ("/api/app/add", "/api/app/update"):

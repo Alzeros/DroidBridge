@@ -433,6 +433,97 @@
   .events-empty{padding:44px var(--space-4);text-align:center;color:hsl(var(--muted));font-size:var(--text-sm)}
   .events-empty .btn{margin-top:var(--space-3)}
 
+  .conns-panel{display:flex;flex-direction:column;flex:1;min-height:0}
+  .conns-summary{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;flex:none;
+    padding:7px 16px;border-bottom:1px solid hsl(var(--line));background:hsl(var(--surface));
+    font-size:12px;color:hsl(var(--muted));font-variant-numeric:tabular-nums;
+  }
+  .conns-summary-left,.conns-summary-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .conns-summary strong{color:hsl(var(--text));font-weight:650}
+  .conns-summary-traffic{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--muted))}
+  .conns-body{flex:1;min-height:0;overflow:auto;padding:10px 16px 14px}
+  .conn-app-select{
+    padding:6px 10px;border:1px solid hsl(var(--line));border-radius:var(--radius-sm);
+    background:hsl(var(--surface));color:hsl(var(--text));font-size:12.5px;max-width:190px;outline:none;flex:none;
+  }
+  .conn-app-select:focus{border-color:hsl(var(--primary))}
+  .conn-mode-seg{
+    display:inline-flex;align-items:center;padding:2px;border-radius:8px;
+    background:hsl(var(--sidebar));border:1px solid hsl(var(--line));gap:2px;
+  }
+  .conn-mode-btn{
+    border:0;border-radius:6px;background:transparent;color:hsl(var(--muted));
+    padding:3px 8px;font-size:11.5px;font-weight:600;cursor:pointer;transition:var(--transition);
+  }
+  .conn-mode-btn:hover{color:hsl(var(--text))}
+  .conn-mode-btn.active{background:hsl(var(--surface));color:hsl(var(--text));box-shadow:0 1px 2px hsl(222 44% 12% / .08)}
+  .conn-group{
+    border:1px solid hsl(var(--line));border-radius:11px;background:hsl(var(--surface));
+    margin-bottom:10px;overflow:hidden;box-shadow:0 1px 2px hsl(222 44% 12% / .03);
+  }
+  .conn-group:last-child{margin-bottom:0}
+  .conn-group-head{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+    padding:9px 13px;background:hsl(var(--surface-soft));border-bottom:1px solid hsl(var(--line));
+  }
+  .conn-group.collapsed .conn-group-head{border-bottom:0}
+  .conn-group-toggle{
+    display:flex;align-items:center;gap:8px;min-width:0;flex:1;border:0;background:transparent;
+    padding:0;text-align:left;color:inherit;cursor:pointer;
+  }
+  .conn-group-chevron{width:14px;height:14px;color:hsl(var(--muted));flex:none;transition:transform var(--transition)}
+  .conn-group.collapsed .conn-group-chevron{transform:rotate(-90deg)}
+  .conn-group-avatar{
+    width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;position:relative;
+    color:#fff;font-size:11.5px;font-weight:700;overflow:hidden;
+  }
+  .conn-group-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:hsl(var(--surface));padding:2px}
+  .conn-group-title{display:flex;align-items:baseline;gap:6px;min-width:0;flex-wrap:wrap}
+  .conn-group-name{font-size:13px;font-weight:650;color:hsl(var(--text));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .conn-group-sub{font-size:11.5px;color:hsl(var(--muted));font-family:ui-monospace,Consolas,monospace}
+  .conn-group-right{display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap}
+  .conn-group-bytes{font:11.5px/1.4 ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--muted));font-variant-numeric:tabular-nums}
+  .conn-group-body{padding:2px 13px 6px}
+  .conn-group.collapsed .conn-group-body{display:none}
+  .conn-row{
+    display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-3);align-items:center;
+    padding:9px 0;border-bottom:1px dashed hsl(var(--line));font-size:var(--text-sm);
+  }
+  .conn-row:last-child{border-bottom:0}
+  .conn-main{min-width:0;display:flex;flex-direction:column;gap:4px}
+  .conn-head{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:wrap}
+  .conn-dot{width:7px;height:7px;border-radius:50%;background:hsl(var(--subtle));flex:none}
+  .conn-dot.live{background:hsl(var(--green));box-shadow:0 0 0 3px hsl(var(--green) / .16)}
+  .conn-target{
+    min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:13px;font-weight:600;color:hsl(var(--text));
+  }
+  .conn-proto{
+    flex:none;padding:1px 6px;border-radius:6px;font-size:10.5px;font-weight:650;letter-spacing:.02em;
+    background:hsl(var(--sidebar));border:1px solid hsl(var(--line));color:hsl(var(--muted));
+  }
+  .conn-proc{
+    flex:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    padding:1px 7px;border-radius:999px;font-size:11px;font-weight:550;
+    background:hsl(var(--primary-soft));color:hsl(var(--primary-hover));border:1px solid hsl(var(--primary) / .14);
+  }
+  .conn-proc.unknown{background:hsl(var(--surface-soft));color:hsl(var(--muted));border-color:hsl(var(--line))}
+  .conn-meta{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-left:14px;
+    font-size:11.5px;color:hsl(var(--muted));font-variant-numeric:tabular-nums;
+  }
+  .conn-rule{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .conn-bytes{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--text))}
+  .conn-side{display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+  .conn-close-btn{
+    border:1px solid hsl(var(--red) / .24);background:hsl(var(--red-soft) / .55);color:hsl(var(--red));
+    padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:550;line-height:1.4;white-space:nowrap;cursor:pointer;
+    transition:background var(--transition),border-color var(--transition),color var(--transition);
+  }
+  .conn-close-btn:hover:not(:disabled){background:hsl(var(--red));border-color:hsl(var(--red));color:#fff}
+  .conn-close-btn:disabled{opacity:.5;cursor:not-allowed}
+
   .log-panel{display:flex;flex-direction:column;flex:1;min-height:0}
   .log-bar{
     display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;flex:none;
@@ -447,7 +538,8 @@
   .log-row.info .log-msg{color:hsl(var(--text))} .log-row.ok .log-msg{color:hsl(var(--green))}
   .log-row.err .log-msg{color:hsl(var(--red))} .log-row.dim .log-msg{color:hsl(var(--muted))}
 
-  /* View 3: Rules Editor Page */
+  /* View 2: Traffic Center — Rules Subtab */
+  .rules-pane{display:flex;flex-direction:column;flex:1;min-height:0}
   .tester-panel{margin-bottom:14px;flex:none}
   .tester-body{padding:12px 16px;display:flex;flex-direction:column;gap:8px}
   .tester-row{display:flex;align-items:center;gap:10px}
@@ -463,7 +555,9 @@
     padding:8px 14px;border-bottom:1px solid hsl(var(--line));background:hsl(var(--surface-soft));font-size:12px;
   }
   .editor-bar-left,.editor-bar-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+  .editor-bar-sep{width:1px;height:16px;background:hsl(var(--line));margin:0 2px}
   .editor-filename{font-weight:650;color:hsl(var(--text));font-family:ui-monospace,Consolas,"Cascadia Code",monospace}
+  .editor-filepath{font-size:11.5px;color:hsl(var(--subtle));max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .editor-tpl-btn{
     border:1px solid hsl(var(--line));background:hsl(var(--surface));color:hsl(var(--muted));
     padding:2px 8px;border-radius:7px;font-size:11.5px;line-height:1.5;white-space:nowrap;
@@ -720,6 +814,13 @@
     .phone-stage-panel{min-height:360px}
     .phone-viewport{min-height:300px}
     .events-body{max-height:60vh}
+    .conns-body{max-height:60vh;padding:8px 10px 12px}
+    .conn-app-select{max-width:100%;width:100%}
+    .conn-group-head{padding:8px 10px}
+    .conn-group-body{padding:2px 10px 6px}
+    .conn-row{grid-template-columns:1fr;gap:8px}
+    .conn-meta{padding-left:0}
+    .conn-side{justify-content:flex-end}
     .log-list{max-height:60vh}
     .code-editor-shell{min-height:300px}
     .page-head{align-items:flex-start}
@@ -768,13 +869,8 @@
     </button>
     <button class="nav-item" id="navTraffic" type="button" role="tab" data-view="traffic" aria-selected="false" aria-controls="viewTraffic">
       <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg></span>
-      <span class="nav-label">分流监控</span>
+      <span class="nav-label">分流中心</span>
       <span class="nav-badge" id="navTrafficBadge" hidden></span>
-    </button>
-    <button class="nav-item" id="navRules" type="button" role="tab" data-view="rules" aria-selected="false" aria-controls="viewRules">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h14"/><circle cx="18" cy="12" r="2.2"/></svg></span>
-      <span class="nav-label">分流规则</span>
-      <span class="nav-badge warn" id="navRulesBadge" hidden></span>
     </button>
     <button class="nav-item" id="navPhone" type="button" role="tab" data-view="phone" aria-selected="false" aria-controls="viewPhone">
       <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 18h.01"/></svg></span>
@@ -929,28 +1025,66 @@
     </div>
   </section>
 
-  <!-- View 2: 分流监控 -->
+  <!-- View 2: 分流中心 -->
   <section class="view-pane fill-view" id="viewTraffic" role="tabpanel" aria-labelledby="navTraffic" hidden>
     <div class="page-head">
       <div>
-        <h2>分流监控</h2>
-        <p class="page-sub">实时追踪最近 300 条请求的分流去向，支持关键词搜索与一键改规则</p>
+        <h2>分流中心</h2>
+        <p class="page-sub">统一管理活跃连接、分流记录、rules.yaml 规则与运行日志</p>
       </div>
       <div class="head-right">
-        <div class="seg-tabs" role="tablist" aria-label="监控视图">
+        <div class="seg-tabs" role="tablist" aria-label="分流中心视图">
+          <button class="diagnostic-tab" id="tabConnections" type="button" role="tab" aria-selected="false" aria-controls="connsPanel">
+            <span>活跃连接</span><span class="badge" id="connsCount">0</span>
+          </button>
           <button class="diagnostic-tab active" id="tabEvents" type="button" role="tab" aria-selected="true" aria-controls="eventsBody">
             <span>分流实况</span><span class="badge" id="eventsCount"></span>
+          </button>
+          <button class="diagnostic-tab" id="tabRules" type="button" role="tab" aria-selected="false" aria-controls="rulesPane">
+            <span>分流规则</span><span class="badge bad" id="tabRulesBadge" hidden>!</span>
           </button>
           <button class="diagnostic-tab" id="tabLogs" type="button" role="tab" aria-selected="false" aria-controls="logPanel">
             <span>运行日志</span><span class="log-count" id="logCount"></span>
           </button>
         </div>
-        <button class="btn tiny" id="btnOpenRules" type="button">编辑规则</button>
-        <button class="btn tiny" id="btnClearEvents" type="button">清空</button>
       </div>
     </div>
 
     <section class="panel traffic-panel" id="diagnosticsPanel" aria-label="分流与日志列表">
+      <section class="conns-panel" id="connsPanel" role="tabpanel" aria-labelledby="tabConnections" hidden>
+        <div class="events-bar" id="connsBar">
+          <div class="search event-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="connSearch" type="search" placeholder="搜索域名、所属进程、PID 或命中规则…" aria-label="搜索活跃连接">
+            <button class="search-clear" id="btnConnSearchClear" type="button" hidden aria-label="清除连接搜索">×</button>
+          </div>
+          <select class="conn-app-select" id="connAppFilter" aria-label="按应用筛选连接">
+            <option value="all">全部应用</option>
+          </select>
+          <div class="chips" id="connChips" role="group" aria-label="连接筛选">
+            <button class="chip tiny active" type="button" data-cfilter="all">全部</button>
+            <button class="chip tiny" type="button" data-cfilter="PROXY">走代理</button>
+            <button class="chip tiny" type="button" data-cfilter="DIRECT">直连</button>
+          </div>
+        </div>
+        <div class="conns-summary">
+          <div class="conns-summary-left">
+            <span class="conn-dot" id="connsSummaryDot"></span>
+            <strong id="connsSummaryCount">0 条活跃连接</strong>
+            <span class="conns-summary-traffic" id="connsSummaryTraffic">↑ 0 B · ↓ 0 B</span>
+          </div>
+          <div class="conns-summary-right">
+            <div class="conn-mode-seg" role="group" aria-label="连接显示方式">
+              <button type="button" class="conn-mode-btn active" id="btnConnModeGroup" data-cmode="group">按应用分组</button>
+              <button type="button" class="conn-mode-btn" id="btnConnModeFlat" data-cmode="flat">平铺列表</button>
+            </div>
+            <button class="btn tiny" id="btnConnsRefresh" type="button">刷新</button>
+            <button class="btn tiny danger" id="btnCloseAllConns" type="button" hidden>全部断开</button>
+          </div>
+        </div>
+        <div class="conns-body" id="connsBody"></div>
+      </section>
+
       <div class="events-bar" id="eventsBar">
         <div class="search event-search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -963,6 +1097,7 @@
           <button class="chip tiny" type="button" data-efilter="DIRECT">直连</button>
           <button class="chip tiny" type="button" data-efilter="ERROR">错误</button>
         </div>
+        <button class="btn tiny" id="btnClearEvents" type="button">清空</button>
       </div>
       <div class="events-body" id="eventsBody" role="tabpanel" aria-labelledby="tabEvents"></div>
 
@@ -981,62 +1116,54 @@
         <div class="log-list" id="logList"></div>
       </section>
     </section>
-  </section>
 
-  <!-- View 3: 分流规则 -->
-  <section class="view-pane fill-view" id="viewRules" role="tabpanel" aria-labelledby="navRules" hidden>
-    <div class="page-head">
-      <div>
-        <h2>分流规则</h2>
-        <p class="page-sub" id="rulesMetaSub">规则文件：<span id="rulesPathLabel">rules.yaml</span> · 保存前自动语法校验并热更新</p>
-      </div>
-      <div class="head-right">
-        <button class="btn" id="btnRulesReload" type="button">重新加载</button>
-        <button class="btn primary" id="btnRulesSave" type="button">验证并保存</button>
-      </div>
+    <div class="rules-pane" id="rulesPane" role="tabpanel" aria-labelledby="tabRules" hidden>
+      <section class="panel tester-panel" aria-label="域名命中测试">
+        <div class="tester-body">
+          <div class="tester-row">
+            <label class="tester-label" for="ruleTestHost">命中测试</label>
+            <input id="ruleTestHost" placeholder="输入域名或 URL，如 https://api.cmaiot.cn/v1">
+            <button type="button" class="btn tiny" id="btnRuleTest">测试</button>
+          </div>
+          <div class="inspect" id="ruleTestResult" hidden></div>
+        </div>
+      </section>
+
+      <section class="panel rules-editor-panel" aria-label="规则内容编辑器">
+        <div class="editor-bar">
+          <div class="editor-bar-left">
+            <span class="editor-filename" id="rulesFileName">rules.yaml</span>
+            <span class="editor-filepath" id="rulesPathLabel" title="规则文件路径"></span>
+            <span class="badge warn" id="rulesDirtyBadge" hidden>未保存</span>
+          </div>
+          <div class="editor-bar-tools">
+            <button type="button" class="editor-tpl-btn" data-rtpl="DOMAIN-SUFFIX,example.com,DIRECT">+ 域名后缀</button>
+            <button type="button" class="editor-tpl-btn" data-rtpl="DOMAIN,example.com,DIRECT">+ 精确域名</button>
+            <button type="button" class="editor-tpl-btn" data-rtpl="IP-CIDR,10.0.0.0/8,DIRECT">+ 网段</button>
+            <span class="editor-bar-sep" aria-hidden="true"></span>
+            <button class="btn tiny" id="btnRulesReload" type="button">重新加载</button>
+            <button class="btn tiny primary" id="btnRulesSave" type="button">验证并保存</button>
+          </div>
+        </div>
+        <div class="code-editor-shell" id="rulesEditorShell">
+          <div class="code-gutter" id="rulesGutter" aria-hidden="true"></div>
+          <div class="code-canvas">
+            <pre class="code-highlight" id="rulesHighlight" aria-hidden="true"></pre>
+            <textarea id="rulesContent" class="rules-editor-area" spellcheck="false" wrap="off" aria-label="规则文件内容"></textarea>
+          </div>
+        </div>
+        <div class="rules-error-wrap" id="rulesErrorWrap" hidden>
+          <div class="inspect bad" id="rulesError" style="margin-top:0"></div>
+        </div>
+        <div class="editor-status-bar">
+          <div class="editor-status-left">
+            <span id="rulesCursorPos">第 1 行，第 1 列</span>
+            <span id="rulesLineTotal">共 1 行</span>
+          </div>
+          <span>Tab 缩进 · Shift+Tab 反缩进 · Ctrl+/ 注释 · Ctrl+S 保存</span>
+        </div>
+      </section>
     </div>
-
-    <section class="panel tester-panel" aria-label="域名命中测试">
-      <div class="tester-body">
-        <div class="tester-row">
-          <label class="tester-label" for="ruleTestHost">命中测试</label>
-          <input id="ruleTestHost" placeholder="输入域名或 URL，如 https://api.cmaiot.cn/v1">
-          <button type="button" class="btn tiny" id="btnRuleTest">测试</button>
-        </div>
-        <div class="inspect" id="ruleTestResult" hidden></div>
-      </div>
-    </section>
-
-    <section class="panel rules-editor-panel" aria-label="规则内容编辑器">
-      <div class="editor-bar">
-        <div class="editor-bar-left">
-          <span class="editor-filename" id="rulesFileName">rules.yaml</span>
-          <span class="badge warn" id="rulesDirtyBadge" hidden>未保存</span>
-        </div>
-        <div class="editor-bar-tools">
-          <button type="button" class="editor-tpl-btn" data-rtpl="DOMAIN-SUFFIX,example.com,DIRECT">+ 域名后缀</button>
-          <button type="button" class="editor-tpl-btn" data-rtpl="DOMAIN,example.com,DIRECT">+ 精确域名</button>
-          <button type="button" class="editor-tpl-btn" data-rtpl="IP-CIDR,10.0.0.0/8,DIRECT">+ 网段</button>
-        </div>
-      </div>
-      <div class="code-editor-shell" id="rulesEditorShell">
-        <div class="code-gutter" id="rulesGutter" aria-hidden="true"></div>
-        <div class="code-canvas">
-          <pre class="code-highlight" id="rulesHighlight" aria-hidden="true"></pre>
-          <textarea id="rulesContent" class="rules-editor-area" spellcheck="false" wrap="off" aria-label="规则文件内容"></textarea>
-        </div>
-      </div>
-      <div class="rules-error-wrap" id="rulesErrorWrap" hidden>
-        <div class="inspect bad" id="rulesError" style="margin-top:0"></div>
-      </div>
-      <div class="editor-status-bar">
-        <div class="editor-status-left">
-          <span id="rulesCursorPos">第 1 行，第 1 列</span>
-          <span id="rulesLineTotal">共 1 行</span>
-        </div>
-        <span>Tab 缩进 · Shift+Tab 反缩进 · Ctrl+/ 注释 · Ctrl+S 保存</span>
-      </div>
-    </section>
   </section>
 
   <!-- View 4: 手机屏幕 -->
@@ -1298,6 +1425,14 @@ let APP_SORT = 'default';
 let APP_QUERY = '';
 let EVENT_FILTER = 'all';
 let EVENT_QUERY = '';
+let CONN_FILTER = 'all';
+let CONN_APP_FILTER = 'all';
+let CONN_GROUP_MODE = 'group';
+let COLLAPSED_CONN_GROUPS = new Set();
+let CONN_QUERY = '';
+let DIAGNOSTIC_TAB = 'events';
+let ACTIVE_CONNS = { connections: [], total: 0, total_tx: 0, total_rx: 0 };
+let CONNS_POLL_TIMER = null;
 let LOG_FILTER = 'all';
 let LATENCY_HISTORY = [];
 let lastGridSig = '';
@@ -1416,11 +1551,16 @@ function initial(name){
 
 /* Navigation */
 function setActiveView(view){
-  const allowed = ['apps','traffic','rules','phone','settings'];
+  if(view === 'rules'){
+    setActiveView('traffic');
+    setDiagnosticTab('rules');
+    return;
+  }
+  const allowed = ['apps','traffic','phone','settings'];
   if(!allowed.includes(view)) view = 'apps';
   const prevView = ACTIVE_VIEW;
   ACTIVE_VIEW = view;
-  const viewMap = {apps:'#viewApps', traffic:'#viewTraffic', rules:'#viewRules', phone:'#viewPhone', settings:'#viewSettings'};
+  const viewMap = {apps:'#viewApps', traffic:'#viewTraffic', phone:'#viewPhone', settings:'#viewSettings'};
   for(const k of allowed){
     const pane = $(viewMap[k]);
     if(pane) pane.hidden = k !== view;
@@ -1434,8 +1574,12 @@ function setActiveView(view){
   if(prevView === 'phone' && view !== 'phone'){
     sendPhoneWs({type:'pause', paused:true});
   }
-  if(view === 'rules' && (!RULES_LOADED || !RULES_DIRTY)){
-    loadRules(false);
+  syncConnsPolling();
+  if(view === 'traffic'){
+    loadConnections();
+    if(DIAGNOSTIC_TAB === 'rules' && (!RULES_LOADED || !RULES_DIRTY)){
+      loadRules(false);
+    }
   }
   if(view === 'phone'){
     loadAdbState();
@@ -1458,19 +1602,48 @@ function setActiveView(view){
 
 /* Traffic subtabs */
 const LOG_COLLAPSE_KEY = 'droidbridge.logCollapsed';
+function syncConnsPolling(){
+  const need = ACTIVE_VIEW === 'traffic' && DIAGNOSTIC_TAB === 'connections';
+  if(need && !CONNS_POLL_TIMER){
+    loadConnections();
+    CONNS_POLL_TIMER = setInterval(() => {
+      if(ACTIVE_VIEW === 'traffic' && DIAGNOSTIC_TAB === 'connections') loadConnections();
+    }, 1500);
+  }else if(!need && CONNS_POLL_TIMER){
+    clearInterval(CONNS_POLL_TIMER);
+    CONNS_POLL_TIMER = null;
+  }
+}
 function setDiagnosticTab(tab){
+  if(!['connections','events','rules','logs'].includes(tab)) tab = 'events';
+  DIAGNOSTIC_TAB = tab;
+  const showConns = tab === 'connections';
+  const showEvents = tab === 'events';
+  const showRules = tab === 'rules';
   const showLogs = tab === 'logs';
-  $('#eventsBar').hidden = showLogs;
-  $('#eventsBody').hidden = showLogs;
-  $('#eventChips').hidden = showLogs;
-  $('#btnOpenRules').hidden = showLogs;
-  $('#btnClearEvents').hidden = showLogs;
+  $('#diagnosticsPanel').hidden = showRules;
+  $('#rulesPane').hidden = !showRules;
+  $('#connsPanel').hidden = !showConns;
+  $('#btnCloseAllConns').hidden = !showConns;
+  $('#eventsBar').hidden = !showEvents;
+  $('#eventsBody').hidden = !showEvents;
+  $('#eventChips').hidden = !showEvents;
+  $('#btnClearEvents').hidden = !showEvents;
   $('#logPanel').hidden = !showLogs;
   $('#logTools').hidden = !showLogs;
-  $('#tabEvents').classList.toggle('active', !showLogs);
+  $('#tabConnections').classList.toggle('active', showConns);
+  $('#tabEvents').classList.toggle('active', showEvents);
+  $('#tabRules').classList.toggle('active', showRules);
   $('#tabLogs').classList.toggle('active', showLogs);
-  $('#tabEvents').setAttribute('aria-selected', String(!showLogs));
+  $('#tabConnections').setAttribute('aria-selected', String(showConns));
+  $('#tabEvents').setAttribute('aria-selected', String(showEvents));
+  $('#tabRules').setAttribute('aria-selected', String(showRules));
   $('#tabLogs').setAttribute('aria-selected', String(showLogs));
+  if(showRules){
+    if(!RULES_LOADED || !RULES_DIRTY) loadRules(false);
+    else syncRulesEditor();
+  }
+  syncConnsPolling();
 }
 function applyLogCollapse(collapsed){
   setDiagnosticTab(collapsed ? 'events' : 'logs');
@@ -1917,6 +2090,307 @@ function renderGrid(){
   prevIds = newIds;
 }
 
+/* Active Connections */
+function formatBytes(n){
+  const v = Number(n || 0);
+  if(v < 1024) return v + ' B';
+  if(v < 1048576) return (v / 1024).toFixed(1) + ' KB';
+  if(v < 1073741824) return (v / 1048576).toFixed(2) + ' MB';
+  return (v / 1073741824).toFixed(2) + ' GB';
+}
+function formatDuration(sec){
+  const s = Math.max(0, Math.floor(Number(sec || 0)));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  return h > 0 ? `${h}:${pad(m)}:${pad(r)}` : `${pad(m)}:${pad(r)}`;
+}
+function connGroupKey(c){
+  const name = String(c.process || '').trim();
+  return name ? name.toLowerCase() : '__unknown__';
+}
+function connMatchedApp(c){
+  const apps = (STATE && STATE.apps) || [];
+  const pPath = String(c.process_path || '').trim().toLowerCase();
+  const pName = String(c.process || '').trim().toLowerCase();
+  if(pPath){
+    const hit = apps.find(a => String(a.resolved_exe || a.exe || '').trim().toLowerCase() === pPath);
+    if(hit) return hit;
+  }
+  if(pName){
+    const hit = apps.find(a => (String(a.resolved_exe || a.exe || '').split(/[\\/]/).pop() || '').toLowerCase() === pName);
+    if(hit) return hit;
+  }
+  return null;
+}
+function connMatches(c){
+  if(CONN_APP_FILTER !== 'all' && connGroupKey(c) !== CONN_APP_FILTER) return false;
+  if(CONN_FILTER !== 'all' && (c.action || '').toUpperCase() !== CONN_FILTER) return false;
+  if(CONN_QUERY){
+    const q = CONN_QUERY.toLowerCase();
+    const app = connMatchedApp(c);
+    const hay = [c.target, c.host, c.process, app ? app.name : '', c.pid ? 'pid ' + c.pid : '', c.rule, c.protocol, c.client].join(' ').toLowerCase();
+    if(!hay.includes(q)) return false;
+  }
+  return true;
+}
+function renderConnRowHtml(c, showProcPill){
+  const act = (c.action || '').toUpperCase();
+  const cls = act === 'PROXY' ? 'proxy' : act === 'DIRECT' ? 'direct' : 'bad';
+  const label = act === 'PROXY' ? '走代理' : act === 'DIRECT' ? '直连' : act;
+  const nextAct = act === 'PROXY' ? 'DIRECT' : (act === 'DIRECT' ? 'PROXY' : '');
+  const quickBtn = nextAct && c.host
+    ? `<button class="event-quick-btn" type="button" data-qhost="${esc(c.host)}" data-qact="${nextAct}" title="将 ${esc(c.host)} 设为${nextAct === 'DIRECT' ? '直连' : '走代理'}">${nextAct === 'DIRECT' ? '改直连' : '改代理'}</button>`
+    : '';
+  const procLabel = c.process || '本机进程';
+  const procTitle = [c.process_path || c.process || '未知进程', c.pid ? `PID ${c.pid}` : '', c.client ? `来源 ${c.client}` : ''].filter(Boolean).join(' · ');
+  const procPill = showProcPill
+    ? `<span class="conn-proc${c.process ? '' : ' unknown'}" title="${esc(procTitle)}">${esc(procLabel)}</span>`
+    : '';
+  return `<div class="conn-row" data-cid="${esc(c.id)}">
+    <div class="conn-main">
+      <div class="conn-head">
+        <span class="conn-dot${c.active ? ' live' : ''}" title="${c.active ? '最近 3 秒有数据传输' : '连接保持空闲中'}"></span>
+        <span class="conn-target" title="${esc(c.target)}">${esc(c.target)}</span>
+        <span class="conn-proto">${esc(c.protocol || 'TCP')}</span>
+        ${procPill}
+      </div>
+      <div class="conn-meta">
+        ${c.rule ? `<span class="conn-rule" title="${esc(c.rule)}">${esc(c.rule)}</span>` : ''}
+        <span>已维持 ${formatDuration(c.duration_s)}</span>
+        <span class="conn-bytes">↑ ${formatBytes(c.tx_bytes)} · ↓ ${formatBytes(c.rx_bytes)}</span>
+        ${c.pid ? `<span>PID ${esc(c.pid)}</span>` : ''}
+      </div>
+    </div>
+    <div class="conn-side">
+      <span class="badge ${cls}">${label}</span>
+      ${quickBtn}
+      <button class="conn-close-btn" type="button" data-cid="${esc(c.id)}" title="立即断开此连接">断开</button>
+    </div>
+  </div>`;
+}
+function syncConnAppFilterOptions(list){
+  const sel = $('#connAppFilter');
+  if(!sel) return;
+  const counts = new Map();
+  for(const c of list){
+    const key = connGroupKey(c);
+    const prev = counts.get(key);
+    if(prev){
+      prev.count += 1;
+    }else{
+      const app = connMatchedApp(c);
+      const rawProc = c.process || '本机进程';
+      const label = app && app.name.toLowerCase() !== rawProc.replace(/\.exe$/i, '').toLowerCase()
+        ? `${app.name} (${rawProc})`
+        : rawProc;
+      counts.set(key, {key, label, count: 1});
+    }
+  }
+  const sorted = [...counts.values()].sort((a, b) => {
+    if(a.key === '__unknown__') return 1;
+    if(b.key === '__unknown__') return -1;
+    return a.label.localeCompare(b.label, 'zh-CN');
+  });
+  if(CONN_APP_FILTER !== 'all' && !counts.has(CONN_APP_FILTER)){
+    sorted.push({key: CONN_APP_FILTER, label: CONN_APP_FILTER === '__unknown__' ? '本机进程' : CONN_APP_FILTER, count: 0});
+  }
+  const html = `<option value="all">全部应用（${sorted.filter(x => x.count > 0).length}）</option>`
+    + sorted.map(g => `<option value="${esc(g.key)}">${esc(g.label)} (${g.count})</option>`).join('');
+  if(sel.innerHTML !== html) sel.innerHTML = html;
+  sel.value = CONN_APP_FILTER;
+}
+function renderConnections(){
+  const list = ACTIVE_CONNS.connections || [];
+  const total = list.length;
+  syncConnAppFilterOptions(list);
+  const filtered = list.filter(connMatches);
+  const countEl = $('#connsCount');
+  const closeAllBtn = $('#btnCloseAllConns');
+  const dotEl = $('#connsSummaryDot');
+
+  const appTotalCount = new Set(list.map(connGroupKey)).size;
+  const filteredTx = filtered.reduce((acc, c) => acc + Number(c.tx_bytes || 0), 0);
+  const filteredRx = filtered.reduce((acc, c) => acc + Number(c.rx_bytes || 0), 0);
+  const isFiltered = !!(CONN_QUERY || CONN_FILTER !== 'all' || CONN_APP_FILTER !== 'all');
+
+  countEl.textContent = String(total);
+  countEl.className = 'badge' + (total ? ' good' : '');
+  if(closeAllBtn) closeAllBtn.disabled = total === 0;
+  if(dotEl) dotEl.className = 'conn-dot' + (list.some(c => c.active) ? ' live' : '');
+  $('#connsSummaryCount').textContent = isFiltered
+    ? `显示 ${filtered.length} / ${total} 条活跃连接`
+    : (total ? `${total} 条活跃连接 · ${appTotalCount} 个应用` : '0 条活跃连接');
+  $('#connsSummaryTraffic').textContent = `↑ ${formatBytes(isFiltered ? filteredTx : ACTIVE_CONNS.total_tx)} · ↓ ${formatBytes(isFiltered ? filteredRx : ACTIVE_CONNS.total_rx)}`;
+
+  document.querySelectorAll('.conn-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.cmode === CONN_GROUP_MODE);
+  });
+
+  const body = $('#connsBody');
+  if(!filtered.length){
+    body.innerHTML = total
+      ? `<div class="events-empty">当前筛选下没有活跃连接<br><button class="btn tiny" id="btnClearConnFilters" type="button">清除筛选</button></div>`
+      : `<div class="events-empty">当前没有正在维持的连接。从应用台启动应用并保持网页/长连接时，会在这里按应用实时分组显示流量与断开入口。</div>`;
+    const resetBtn = $('#btnClearConnFilters');
+    if(resetBtn){
+      resetBtn.onclick = () => {
+        CONN_QUERY = ''; $('#connSearch').value = ''; $('#btnConnSearchClear').hidden = true;
+        CONN_FILTER = 'all'; CONN_APP_FILTER = 'all';
+        $('#connAppFilter').value = 'all';
+        document.querySelectorAll('#connChips .chip').forEach(c => c.classList.toggle('active', c.dataset.cfilter === 'all'));
+        renderConnections();
+      };
+    }
+    return;
+  }
+
+  if(CONN_GROUP_MODE === 'flat'){
+    body.innerHTML = filtered.map(c => renderConnRowHtml(c, true)).join('');
+    return;
+  }
+
+  const groupMap = new Map();
+  for(const c of filtered){
+    const key = connGroupKey(c);
+    let grp = groupMap.get(key);
+    if(!grp){
+      const app = connMatchedApp(c);
+      const rawProc = c.process || '本机进程';
+      const title = app ? app.name : rawProc;
+      const sub = app && app.name.toLowerCase() !== rawProc.toLowerCase() ? rawProc : '';
+      grp = {key, title, sub, rawProc, app, items: [], tx: 0, rx: 0, active: false, pids: new Set()};
+      groupMap.set(key, grp);
+    }
+    grp.items.push(c);
+    grp.tx += Number(c.tx_bytes || 0);
+    grp.rx += Number(c.rx_bytes || 0);
+    if(c.active) grp.active = true;
+    if(c.pid) grp.pids.add(c.pid);
+  }
+  const groups = [...groupMap.values()].sort((a, b) => {
+    if(a.key === '__unknown__') return 1;
+    if(b.key === '__unknown__') return -1;
+    return a.title.localeCompare(b.title, 'zh-CN');
+  });
+
+  body.innerHTML = groups.map(g => {
+    const collapsed = COLLAPSED_CONN_GROUPS.has(g.key);
+    const iconImg = g.app && g.app.exists
+      ? `<img src="/api/app/icon?id=${encodeURIComponent(g.app.id)}&v=${encodeURIComponent(g.app.resolved_exe || g.app.exe)}&token=${encodeURIComponent(TOKEN)}" alt="" onerror="this.remove()">`
+      : '';
+    const pidHint = g.pids.size ? `PID ${[...g.pids].join(', ')}` : '';
+    const closeIds = g.items.map(x => x.id).join(',');
+    return `<section class="conn-group${collapsed ? ' collapsed' : ''}" data-gkey="${esc(g.key)}">
+      <div class="conn-group-head">
+        <button type="button" class="conn-group-toggle" data-gtoggle="${esc(g.key)}" aria-expanded="${String(!collapsed)}" title="${esc(pidHint || g.rawProc)}">
+          <svg class="conn-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          <span class="conn-group-avatar" style="background:${colorOf(g.title)}">${iconImg}${esc(initial(g.title))}</span>
+          <span class="conn-group-title">
+            <span class="conn-group-name">${esc(g.title)}</span>
+            ${g.sub ? `<span class="conn-group-sub">${esc(g.sub)}</span>` : ''}
+            <span class="badge${g.active ? ' good' : ''}">${g.items.length} 条</span>
+          </span>
+        </button>
+        <div class="conn-group-right">
+          <span class="conn-group-bytes">↑ ${formatBytes(g.tx)} · ↓ ${formatBytes(g.rx)}</span>
+          <button type="button" class="conn-close-btn" data-gclose="${esc(g.key)}" data-gtitle="${esc(g.title)}" data-gids="${esc(closeIds)}" title="断开 ${esc(g.title)} 的全部 ${g.items.length} 条连接">断开应用</button>
+        </div>
+      </div>
+      <div class="conn-group-body">${g.items.map(c => renderConnRowHtml(c, false)).join('')}</div>
+    </section>`;
+  }).join('');
+}
+async function closeGroupConnections(title, ids){
+  if(!ids || !ids.length) return;
+  if(ids.length > 1){
+    const yes = await askConfirm({
+      title: `断开 ${title} 的全部连接`,
+      body: `确定立即断开 ${title} 当前维持的 ${ids.length} 条活跃连接？`,
+      okText: '确认断开',
+      danger: true,
+    });
+    if(!yes) return;
+  }
+  try{
+    let last = null;
+    for(const id of ids){
+      last = await api('/api/connections/close', {id});
+    }
+    if(last && last.ok){
+      ACTIVE_CONNS = {
+        connections: last.connections || [],
+        total: Number(last.total || 0),
+        total_tx: Number(last.total_tx || 0),
+        total_rx: Number(last.total_rx || 0),
+      };
+      renderConnections();
+    }else{
+      await loadConnections();
+    }
+    toast(`已断开 ${title} 的 ${ids.length} 条连接`, {type:'ok'});
+    log(`已手动断开应用 ${title} 的 ${ids.length} 条活跃连接`, 'info');
+  }catch(e){
+    toast('断开连接失败', {type:'err'});
+  }
+}
+async function loadConnections(){
+  try{
+    const r = await api('/api/connections');
+    if(!r || !r.ok) return;
+    ACTIVE_CONNS = {
+      connections: r.connections || [],
+      total: Number(r.total || 0),
+      total_tx: Number(r.total_tx || 0),
+      total_rx: Number(r.total_rx || 0),
+    };
+    renderConnections();
+  }catch(e){}
+}
+async function closeConnection(id){
+  try{
+    const r = await api('/api/connections/close', {id});
+    if(!r || !r.ok){ toast((r && r.error) || '断开连接失败', {type:'err'}); return; }
+    ACTIVE_CONNS = {
+      connections: r.connections || [],
+      total: Number(r.total || 0),
+      total_tx: Number(r.total_tx || 0),
+      total_rx: Number(r.total_rx || 0),
+    };
+    renderConnections();
+    toast(r.closed ? '已断开连接' : '连接已结束', {type:'ok'});
+    log(`已手动断开连接 ${id}`, 'info');
+  }catch(e){
+    toast('断开连接失败', {type:'err'});
+  }
+}
+async function closeAllConnections(){
+  const count = ACTIVE_CONNS.total || (ACTIVE_CONNS.connections || []).length;
+  if(!count) return;
+  const yes = await askConfirm({
+    title: '断开全部活跃连接',
+    body: `确定立即断开当前全部 ${count} 条活跃连接？正在进行的下载、网页长连接或 AI 对话会中断并自动重连。`,
+    okText: '全部断开',
+    danger: true,
+  });
+  if(!yes) return;
+  try{
+    const r = await api('/api/connections/close', {all:true});
+    if(!r || !r.ok){ toast((r && r.error) || '断开失败', {type:'err'}); return; }
+    ACTIVE_CONNS = {
+      connections: r.connections || [],
+      total: Number(r.total || 0),
+      total_tx: Number(r.total_tx || 0),
+      total_rx: Number(r.total_rx || 0),
+    };
+    renderConnections();
+    toast(`已断开 ${r.closed} 条连接`, {type:'ok'});
+    log(`已手动断开全部 ${r.closed} 条活跃连接`, 'info');
+  }catch(e){
+    toast('断开连接失败', {type:'err'});
+  }
+}
+
 /* Traffic Events */
 function eventMatches(e){
   if(EVENT_FILTER !== 'all' && (e.action || '').toUpperCase() !== EVENT_FILTER) return false;
@@ -1938,11 +2412,12 @@ function renderEvents(){
   const hasErr = events.some(e => !e.ok);
   const filtered = events.filter(eventMatches);
 
+  const hasRulesErr = !!(STATE && STATE.routing_rules_error);
   countEl.textContent = events.length ? `${filtered.length}/${events.length}` : '0';
   countEl.className = 'badge' + (hasErr ? ' bad' : (events.length ? ' proxy' : ''));
-  navBadge.textContent = String(events.length);
-  navBadge.className = 'nav-badge' + (hasErr ? ' bad' : '');
-  navBadge.hidden = events.length === 0;
+  navBadge.textContent = hasRulesErr ? '!' : String(events.length);
+  navBadge.className = 'nav-badge' + ((hasErr || hasRulesErr) ? ' bad' : '');
+  navBadge.hidden = !hasRulesErr && events.length === 0;
   if(clearBtn) clearBtn.disabled = !events.length;
 
   if(events.length){
@@ -2035,13 +2510,9 @@ function render(){
   proxyBadge.textContent = !p.enabled ? '已关闭' : (STATE.proxy_online ? `在线 · ${STATE.proxy_latency_ms}ms` : '离线');
   proxyBadge.className = 'badge ' + (!p.enabled ? '' : (STATE.proxy_online ? 'good' : 'warn'));
 
-  const navRulesBadge = $('#navRulesBadge');
-  if(STATE.routing_rules_error){
-    navRulesBadge.textContent = '!';
-    navRulesBadge.className = 'nav-badge bad';
-    navRulesBadge.hidden = false;
-  }else{
-    navRulesBadge.hidden = true;
+  const tabRulesBadge = $('#tabRulesBadge');
+  if(tabRulesBadge){
+    tabRulesBadge.hidden = !STATE.routing_rules_error;
   }
 
   if(STATE.tray_active){
@@ -2062,6 +2533,13 @@ function render(){
   renderChain();
   renderGrid();
   renderEvents();
+  if(typeof STATE.active_connections === 'number' && DIAGNOSTIC_TAB !== 'connections'){
+    const el = $('#connsCount');
+    if(el){
+      el.textContent = String(STATE.active_connections);
+      el.className = 'badge' + (STATE.active_connections > 0 ? ' good' : '');
+    }
+  }
 }
 function markBackendOffline(){
   $('#proxyDot').className = 'dot off';
@@ -2512,8 +2990,10 @@ async function loadRules(showToast=false){
   try{
     const r = await api('/api/rules');
     const p = r.path || 'rules.yaml';
-    $('#rulesPathLabel').textContent = p;
-    $('#rulesFileName').textContent = p.split(/[\\/]/).pop() || 'rules.yaml';
+    const base = p.split(/[\\/]/).pop() || 'rules.yaml';
+    $('#rulesFileName').textContent = base;
+    $('#rulesPathLabel').textContent = p !== base ? p : '';
+    $('#rulesPathLabel').title = p;
     $('#rulesContent').value = r.content || '';
     RULES_LOADED = true;
     RULES_DIRTY = false;
@@ -3147,7 +3627,6 @@ document.querySelectorAll('#mainNav .nav-item').forEach(btn => {
   btn.onclick = () => setActiveView(btn.dataset.view);
 });
 $('#btnJumpTraffic').onclick = () => { setActiveView('traffic'); applyLogCollapse(true); };
-$('#btnOpenRules').onclick = () => setActiveView('rules');
 $('#hopEntryBtn').onclick = () => setActiveView('settings');
 $('#hopClashBtn').onclick = () => setActiveView('settings');
 $('#mobileChainSummary').onclick = () => $('#chainPanel').scrollIntoView({behavior:'smooth', block:'start'});
@@ -3343,6 +3822,90 @@ $('#btnEventSearchClear').onclick = () => {
   $('#eventSearch').focus(); renderEvents();
 };
 
+$('#connsBody').addEventListener('click', async e => {
+  const gToggle = e.target.closest('button.conn-group-toggle[data-gtoggle]');
+  if(gToggle){
+    const key = gToggle.dataset.gtoggle;
+    if(COLLAPSED_CONN_GROUPS.has(key)) COLLAPSED_CONN_GROUPS.delete(key);
+    else COLLAPSED_CONN_GROUPS.add(key);
+    renderConnections();
+    return;
+  }
+  const gClose = e.target.closest('button.conn-close-btn[data-gclose]');
+  if(gClose && !gClose.disabled){
+    const ids = (gClose.dataset.gids || '').split(',').filter(Boolean);
+    gClose.disabled = true;
+    await closeGroupConnections(gClose.dataset.gtitle || gClose.dataset.gclose, ids);
+    return;
+  }
+  const closeBtn = e.target.closest('button.conn-close-btn[data-cid]');
+  if(closeBtn && !closeBtn.disabled){
+    closeBtn.disabled = true;
+    await closeConnection(closeBtn.dataset.cid);
+    return;
+  }
+  const qBtn = e.target.closest('button[data-qhost]');
+  if(!qBtn || qBtn.disabled) return;
+  const host = qBtn.dataset.qhost;
+  const action = qBtn.dataset.qact;
+  qBtn.disabled = true;
+  try{
+    const r = await api('/api/rules/quick-add', {host, action});
+    if(!r.ok){ toast(r.error||'添加规则失败', {type:'err'}); log('添加规则失败: '+(r.error||''), 'err'); return; }
+    RULES_LOADED = false;
+    if(r.state){ STATE = r.state; render(); }
+    toast((r.message||'规则已更新') + '（可点击断开使旧连接立即重连）', {type:'ok'});
+    log(r.message||`已更新规则：${host} -> ${action}`, 'ok');
+  }catch(err){
+    toast('添加规则失败', {type:'err'});
+  }finally{
+    qBtn.disabled = false;
+  }
+});
+$('#btnCloseAllConns').onclick = closeAllConnections;
+$('#btnConnsRefresh').onclick = loadConnections;
+$('#connAppFilter').onchange = e => {
+  CONN_APP_FILTER = e.target.value || 'all';
+  renderConnections();
+};
+const CONN_MODE_KEY = 'droidbridge.connGroupMode';
+try{
+  const savedConnMode = localStorage.getItem(CONN_MODE_KEY);
+  if(savedConnMode === 'group' || savedConnMode === 'flat') CONN_GROUP_MODE = savedConnMode;
+}catch(e){}
+document.querySelectorAll('.conn-mode-btn').forEach(btn => {
+  btn.onclick = () => {
+    CONN_GROUP_MODE = btn.dataset.cmode === 'flat' ? 'flat' : 'group';
+    try{ localStorage.setItem(CONN_MODE_KEY, CONN_GROUP_MODE); }catch(e){}
+    renderConnections();
+  };
+});
+$('#connSearch').addEventListener('input', e => {
+  CONN_QUERY = e.target.value.trim();
+  $('#btnConnSearchClear').hidden = !CONN_QUERY;
+  renderConnections();
+});
+$('#connSearch').addEventListener('keydown', e => {
+  if(e.key==='Escape' && CONN_QUERY){
+    e.stopPropagation();
+    $('#connSearch').value = ''; CONN_QUERY = ''; $('#btnConnSearchClear').hidden = true;
+    renderConnections();
+  }
+});
+$('#btnConnSearchClear').onclick = () => {
+  $('#connSearch').value = ''; CONN_QUERY = ''; $('#btnConnSearchClear').hidden = true;
+  $('#connSearch').focus(); renderConnections();
+};
+document.querySelectorAll('#connChips .chip').forEach(chip => {
+  chip.onclick = () => {
+    CONN_FILTER = chip.dataset.cfilter;
+    document.querySelectorAll('#connChips .chip').forEach(c => c.classList.toggle('active', c===chip));
+    renderConnections();
+  };
+});
+$('#tabConnections').onclick = () => setDiagnosticTab('connections');
+$('#tabRules').onclick = () => setDiagnosticTab('rules');
+
 $('#tabEvents').onclick = () => {
   applyLogCollapse(true);
   try{ localStorage.setItem(LOG_COLLAPSE_KEY, '1'); }catch(e){}
@@ -3500,15 +4063,15 @@ document.addEventListener('keydown', e => {
   if(!$('#confirm').hidden || !$('#editor').hidden) return;
   if(e.key === '/'){
     e.preventDefault();
-    if(ACTIVE_VIEW === 'traffic' && !$('#eventsBar').hidden) $('#eventSearch').focus();
-    else if(ACTIVE_VIEW === 'rules') $('#ruleTestHost').focus();
+    if(ACTIVE_VIEW === 'traffic' && DIAGNOSTIC_TAB === 'connections') $('#connSearch').focus();
+    else if(ACTIVE_VIEW === 'traffic' && DIAGNOSTIC_TAB === 'rules') $('#ruleTestHost').focus();
+    else if(ACTIVE_VIEW === 'traffic' && !$('#eventsBar').hidden) $('#eventSearch').focus();
     else if(ACTIVE_VIEW === 'phone') $('#phoneTextInput').focus();
     else { setActiveView('apps'); $('#appSearch').focus(); }
   }else if(e.key === '1'){ setActiveView('apps'); }
   else if(e.key === '2'){ setActiveView('traffic'); }
-  else if(e.key === '3'){ setActiveView('rules'); }
-  else if(e.key === '4'){ setActiveView('phone'); }
-  else if(e.key === '5'){ setActiveView('settings'); }
+  else if(e.key === '3'){ setActiveView('phone'); }
+  else if(e.key === '4'){ setActiveView('settings'); }
 });
 window.addEventListener('beforeunload', () => {
   try{ navigator.sendBeacon('/api/quit?token=' + encodeURIComponent(TOKEN), ''); }catch(e){}

@@ -102,6 +102,69 @@ async function startServer() {
   const wsClients = new Set();
   let rulesText = 'rules:\n  - DOMAIN-SUFFIX,baidu.com,DIRECT\n  - MATCH,PROXY\n';
   let exitIpCalls = 0;
+  let activeConnections = [
+    {
+      id: 'c1',
+      host: 'api.anthropic.com',
+      port: 443,
+      target: 'api.anthropic.com:443',
+      protocol: 'HTTPS',
+      action: 'PROXY',
+      rule: 'DOMAIN-SUFFIX,anthropic.com,PROXY',
+      client: '127.0.0.1:53120',
+      pid: 1672,
+      process: 'Mirasim.exe',
+      process_path: 'C:\\Users\\SR\\AppData\\Local\\Programs\\@mirasimdesktop\\Mirasim.exe',
+      started_time: '11:15:02',
+      duration_s: 138,
+      tx_bytes: 18432,
+      rx_bytes: 1542144,
+      active: true,
+    },
+    {
+      id: 'c3',
+      host: 'relay.mirasim.ai',
+      port: 443,
+      target: 'relay.mirasim.ai:443',
+      protocol: 'HTTPS',
+      action: 'PROXY',
+      rule: 'MATCH,PROXY',
+      client: '127.0.0.1:53121',
+      pid: 1672,
+      process: 'Mirasim.exe',
+      process_path: 'C:\\Users\\SR\\AppData\\Local\\Programs\\@mirasimdesktop\\Mirasim.exe',
+      started_time: '11:15:20',
+      duration_s: 120,
+      tx_bytes: 6144,
+      rx_bytes: 51200,
+      active: true,
+    },
+    {
+      id: 'c2',
+      host: 'www.baidu.com',
+      port: 443,
+      target: 'www.baidu.com:443',
+      protocol: 'HTTPS',
+      action: 'DIRECT',
+      rule: 'DOMAIN-SUFFIX,baidu.com,DIRECT',
+      client: '127.0.0.1:53124',
+      pid: 8820,
+      process: 'chrome.exe',
+      process_path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      started_time: '11:16:10',
+      duration_s: 70,
+      tx_bytes: 4096,
+      rx_bytes: 98304,
+      active: false,
+    },
+  ];
+  const connSnapshot = () => ({
+    ok: true,
+    connections: activeConnections,
+    total: activeConnections.length,
+    total_tx: activeConnections.reduce((acc, c) => acc + c.tx_bytes, 0),
+    total_rx: activeConnections.reduce((acc, c) => acc + c.rx_bytes, 0),
+  });
   let phoneStatus = {
     ok: true,
     running: false,
@@ -159,7 +222,29 @@ async function startServer() {
     }
     if (url.pathname === '/api/state') {
       requests.push({ path: url.pathname });
-      res.end(JSON.stringify(state));
+      res.end(JSON.stringify({ ...state, active_connections: activeConnections.length }));
+      return;
+    }
+    if (url.pathname === '/api/connections') {
+      requests.push({ path: url.pathname });
+      res.end(JSON.stringify(connSnapshot()));
+      return;
+    }
+    if (url.pathname === '/api/connections/close') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      let closed = 0;
+      if (parsed.all) {
+        closed = activeConnections.length;
+        activeConnections = [];
+      } else if (parsed.id) {
+        const before = activeConnections.length;
+        activeConnections = activeConnections.filter((c) => c.id !== parsed.id);
+        closed = before - activeConnections.length;
+      }
+      res.end(JSON.stringify({ ok: true, closed, ...connSnapshot() }));
       return;
     }
     if (url.pathname === '/api/adb/state') {
@@ -520,18 +605,16 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
       railPanels: document.querySelectorAll('#statusRail > .panel').length,
       appsVisible: !document.querySelector('#viewApps').hidden,
       trafficHidden: document.querySelector('#viewTraffic').hidden,
-      rulesHidden: document.querySelector('#viewRules').hidden,
       phoneHidden: document.querySelector('#viewPhone').hidden,
       settingsHidden: document.querySelector('#viewSettings').hidden,
     }))()`);
     assert.deepEqual(shell, {
-      navCount: 5,
+      navCount: 4,
       workspace: true,
       statusRail: true,
       railPanels: 1,
       appsVisible: true,
       trafficHidden: true,
-      rulesHidden: true,
       phoneHidden: true,
       settingsHidden: true,
     });
@@ -716,9 +799,9 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
 
     await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '2', bubbles: true }))");
     assert.equal(await browser.evaluate("document.querySelector('#viewTraffic').hidden"), false);
-    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '4', bubbles: true }))");
+    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true }))");
     assert.equal(await browser.evaluate("document.querySelector('#viewPhone').hidden"), false);
-    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '5', bubbles: true }))");
+    await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '4', bubbles: true }))");
     assert.equal(await browser.evaluate("document.querySelector('#viewSettings').hidden"), false);
     await browser.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))");
     assert.equal(await browser.evaluate("document.querySelector('#viewApps').hidden"), false);
@@ -983,9 +1066,127 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.evaluate(`STATE.proxy_events = ${JSON.stringify(savedEvents)}; renderEvents();`);
   });
 
-  await t.test('rules view provides code editor with line numbers, Tab/Shift+Tab, Enter auto-indent, Ctrl+/, and domain testing', async () => {
-    await browser.evaluate("document.querySelector('#navRules').click()");
-    await browser.waitFor("document.querySelector('#viewRules').hidden === false");
+  await t.test('active connections tab groups by app, filters by app/action, toggles flat mode, and supports per-app/single/all disconnect', async () => {
+    await browser.evaluate("document.querySelector('#navTraffic').click()");
+    await browser.waitFor("document.querySelector('#viewTraffic').hidden === false");
+    await browser.evaluate("document.querySelector('#tabConnections').click()");
+    await browser.waitFor("document.querySelector('#connsPanel').hidden === false && document.querySelectorAll('#connsBody .conn-group').length === 2");
+
+    const info = await browser.evaluate(`(() => ({
+      selected: document.querySelector('#tabConnections').getAttribute('aria-selected'),
+      eventsHidden: document.querySelector('#eventsBody').hidden,
+      closeAllVisible: !document.querySelector('#btnCloseAllConns').hidden,
+      clearEventsHidden: document.querySelector('#btnClearEvents').hidden,
+      summary: document.querySelector('#connsSummaryCount').textContent,
+      groupNames: [...document.querySelectorAll('#connsBody .conn-group-name')].map(el => el.textContent.trim()),
+      rowCount: document.querySelectorAll('#connsBody .conn-row').length,
+      appOptions: [...document.querySelectorAll('#connAppFilter option')].map(o => o.value),
+    }))()`);
+    assert.equal(info.selected, 'true');
+    assert.equal(info.eventsHidden, true);
+    assert.equal(info.closeAllVisible, true);
+    assert.equal(info.clearEventsHidden, true);
+    assert.equal(info.summary, '3 条活跃连接 · 2 个应用');
+    assert.deepEqual(info.groupNames, ['chrome.exe', 'Mirasim.exe']);
+    assert.equal(info.rowCount, 3);
+    assert.deepEqual(info.appOptions, ['all', 'chrome.exe', 'mirasim.exe']);
+
+    if (process.env.DROIDBRIDGE_UI_SHOT_CONNS) {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(process.env.DROIDBRIDGE_UI_SHOT_CONNS, Buffer.from(shot.data, 'base64'));
+    }
+
+    // Collapse & expand one app group
+    await browser.evaluate("document.querySelector('#connsBody .conn-group-toggle[data-gtoggle=\"mirasim.exe\"]').click()");
+    assert.equal(await browser.evaluate("document.querySelector('#connsBody .conn-group[data-gkey=\"mirasim.exe\"]').classList.contains('collapsed')"), true);
+    await browser.evaluate("document.querySelector('#connsBody .conn-group-toggle[data-gtoggle=\"mirasim.exe\"]').click()");
+    assert.equal(await browser.evaluate("document.querySelector('#connsBody .conn-group[data-gkey=\"mirasim.exe\"]').classList.contains('collapsed')"), false);
+
+    // Filter by app dropdown
+    await browser.evaluate(`(() => {
+      const sel = document.querySelector('#connAppFilter');
+      sel.value = 'mirasim.exe';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-group').length"), 1);
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-row').length"), 2);
+    await browser.evaluate(`(() => {
+      const sel = document.querySelector('#connAppFilter');
+      sel.value = 'all';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+
+    // Toggle flat mode and back to group mode
+    await browser.evaluate("document.querySelector('#btnConnModeFlat').click()");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-group').length"), 0);
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-proc').length"), 3);
+    await browser.evaluate("document.querySelector('#btnConnModeGroup').click()");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-group').length"), 2);
+
+    // Filter by process name via search
+    await browser.evaluate(`(() => {
+      const input = document.querySelector('#connSearch');
+      input.value = 'Mirasim';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-row').length"), 2);
+    await browser.evaluate("document.querySelector('#btnConnSearchClear').click()");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-row').length"), 3);
+
+    // Filter by DIRECT chip
+    await browser.evaluate("document.querySelector('#connChips [data-cfilter=\"DIRECT\"]').click()");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-row').length"), 1);
+    await browser.evaluate("document.querySelector('#connChips [data-cfilter=\"all\"]').click()");
+
+    // Close entire app group (Mirasim.exe with 2 connections -> confirm modal)
+    await browser.evaluate("document.querySelector('#connsBody .conn-close-btn[data-gclose=\"mirasim.exe\"]').click()");
+    await browser.waitFor("document.querySelector('#confirm').hidden === false");
+    assert.match(await browser.evaluate("document.querySelector('#confirmTitle').textContent"), /Mirasim\.exe/);
+    await browser.evaluate("document.querySelector('#confirmOk').click()");
+    await browser.waitFor("document.querySelectorAll('#connsBody .conn-row').length === 1");
+    assert.ok(requests.some((r) => r.path === '/api/connections/close' && r.body?.id === 'c1'));
+    assert.ok(requests.some((r) => r.path === '/api/connections/close' && r.body?.id === 'c3'));
+
+    // Close all remaining connections with confirmation modal
+    await browser.evaluate("document.querySelector('#btnCloseAllConns').click()");
+    await browser.waitFor("document.querySelector('#confirm').hidden === false");
+    assert.equal(await browser.evaluate("document.querySelector('#confirmTitle').textContent"), '断开全部活跃连接');
+    await browser.evaluate("document.querySelector('#confirmOk').click()");
+    await browser.waitFor("document.querySelectorAll('#connsBody .conn-row').length === 0");
+    assert.ok(requests.some((r) => r.path === '/api/connections/close' && r.body?.all === true));
+    assert.equal(await browser.evaluate("document.querySelector('#btnCloseAllConns').disabled"), true);
+
+    // Verify segmented tab buttons never shift horizontally across all 4 traffic center subtabs
+    const tabRects = await browser.evaluate(`(() => {
+      const read = () => ({
+        c: document.querySelector('#tabConnections').getBoundingClientRect().left,
+        e: document.querySelector('#tabEvents').getBoundingClientRect().left,
+        r: document.querySelector('#tabRules').getBoundingClientRect().left,
+        l: document.querySelector('#tabLogs').getBoundingClientRect().left,
+      });
+      setDiagnosticTab('connections'); const onConns = read();
+      setDiagnosticTab('events'); const onEvents = read();
+      setDiagnosticTab('rules'); const onRules = read();
+      setDiagnosticTab('logs'); const onLogs = read();
+      setDiagnosticTab('connections');
+      return { onConns, onEvents, onRules, onLogs };
+    })()`);
+    for (const k of ['c', 'e', 'r', 'l']) {
+      assert.ok(Math.abs(tabRects.onConns[k] - tabRects.onEvents[k]) < 0.5, `tab ${k} shifted between connections & events`);
+      assert.ok(Math.abs(tabRects.onConns[k] - tabRects.onRules[k]) < 0.5, `tab ${k} shifted between connections & rules`);
+      assert.ok(Math.abs(tabRects.onConns[k] - tabRects.onLogs[k]) < 0.5, `tab ${k} shifted between connections & logs`);
+    }
+
+    // Return to events tab so subsequent tests start cleanly
+    await browser.evaluate("document.querySelector('#tabEvents').click()");
+  });
+
+  await t.test('rules subtab in traffic center provides code editor with line numbers, Tab/Shift+Tab, Enter auto-indent, Ctrl+/, and domain testing', async () => {
+    await browser.evaluate("document.querySelector('#navTraffic').click()");
+    await browser.waitFor("document.querySelector('#viewTraffic').hidden === false");
+    await browser.evaluate("document.querySelector('#tabRules').click()");
+    await browser.waitFor("document.querySelector('#rulesPane').hidden === false");
     await browser.waitFor("document.querySelector('#rulesContent').value.includes('MATCH,PROXY')");
 
     // Verify line-number gutter, syntax highlight overlay, and matched rule highlighting
@@ -1344,12 +1545,15 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_MOBILE, Buffer.from(shot.data, 'base64'));
     }
 
-    for (const navId of ['#navTraffic', '#navRules', '#navPhone', '#navSettings']) {
+    for (const navId of ['#navTraffic', '#navPhone', '#navSettings']) {
       await browser.evaluate(`document.querySelector(${JSON.stringify(navId)}).click()`);
       await new Promise((resolve) => setTimeout(resolve, 80));
       const overflow = await browser.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1');
       assert.equal(overflow, true, `mobile horizontal overflow on ${navId}`);
     }
+    await browser.evaluate("document.querySelector('#navTraffic').click(); document.querySelector('#tabRules').click();");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal(await browser.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), true, 'mobile horizontal overflow on #tabRules');
   });
 
   assert.deepEqual(browser.runtimeErrors, []);
