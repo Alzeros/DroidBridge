@@ -80,6 +80,21 @@ class ConnectionTrackerUnitTests(unittest.TestCase):
             # Close all remaining connections
             self.assertEqual(reg.close_all(), 1)
             self.assertEqual(reg.snapshot()["total"], 0)
+            # Cumulative stats survive disconnect until explicitly reset
+            after_close = reg.snapshot()
+            self.assertEqual(after_close["cumulative_tx"], 640)
+            self.assertEqual(after_close["cumulative_rx"], 2304)
+            self.assertEqual(len(after_close["process_stats"]), 1)
+            self.assertEqual(after_close["process_stats"][0]["tx_bytes"], 640)
+            self.assertEqual(after_close["process_stats"][0]["rx_bytes"], 2304)
+            self.assertEqual(after_close["process_stats"][0]["conn_count"], 2)
+            self.assertGreater(after_close["rx_bps"], 0)
+            # Reset cumulative stats clears history and zeroes counters
+            reg.reset_stats()
+            after_reset = reg.snapshot()
+            self.assertEqual(after_reset["cumulative_tx"], 0)
+            self.assertEqual(after_reset["cumulative_rx"], 0)
+            self.assertEqual(after_reset["process_stats"], [])
             # Idempotent unregister after close
             reg.unregister(c1.id)
             reg.unregister(c2.id)
@@ -89,6 +104,102 @@ class ConnectionTrackerUnitTests(unittest.TestCase):
                     s.close()
                 except OSError:
                     pass
+
+    def test_sliding_rate_meter_accumulates_and_expires(self):
+        meter = conn_tracker._SlidingRateMeter()
+        meter.add(4000, 8000, 100.0)
+        meter.add(2000, 4000, 100.5)
+        self.assertEqual(meter.rate(100.6, window_s=2.0), (3000, 6000))
+        # After 2.0s window expires, rate drops cleanly to zero
+        self.assertEqual(meter.rate(103.0, window_s=2.0), (0, 0))
+
+    def test_resolve_process_ancestors_walks_tree_and_guards_cycles_and_pid_reuse(self):
+        tree = {
+            13608: (24724, "agy.EXE"),
+            24724: (12196, "Mirasim.exe"),
+            12196: (1000, "Mirasim.exe"),
+            1000: (0, "explorer.exe"),
+            # PID reuse case: child 2000 started at t=100, ppid 999 started later at t=500
+            2000: (999, "orphan.exe"),
+            999: (1000, "reused.exe"),
+            # Cycle case: 10 -> 20 -> 10
+            10: (20, "a.exe"),
+            20: (10, "b.exe"),
+        }
+        meta = {
+            13608: ("agy.EXE", r"C:\Users\SR\.mirasim\agents\antigravity\current\bin\agy.EXE", 500),
+            24724: ("Mirasim.exe", r"C:\Apps\Mirasim.exe", 300),
+            12196: ("Mirasim.exe", r"C:\Apps\Mirasim.exe", 200),
+            1000: ("explorer.exe", r"C:\Windows\explorer.exe", 100),
+            2000: ("orphan.exe", r"C:\Apps\orphan.exe", 100),
+            999: ("reused.exe", r"C:\Apps\reused.exe", 500),
+            10: ("a.exe", r"C:\Apps\a.exe", 200),
+            20: ("b.exe", r"C:\Apps\b.exe", 100),
+        }
+        anc = conn_tracker.resolve_process_ancestors(
+            13608,
+            _tree_provider=lambda _force: tree,
+            _meta_provider=lambda pid: meta.get(pid, ("", "", 0)),
+        )
+        self.assertEqual(
+            anc,
+            [
+                {"pid": 24724, "process": "Mirasim.exe", "process_path": r"C:\Apps\Mirasim.exe"},
+                {"pid": 12196, "process": "Mirasim.exe", "process_path": r"C:\Apps\Mirasim.exe"},
+                {"pid": 1000, "process": "explorer.exe", "process_path": r"C:\Windows\explorer.exe"},
+            ],
+        )
+
+        # Recycled parent PID (created after child) must stop the walk
+        self.assertEqual(
+            conn_tracker.resolve_process_ancestors(
+                2000,
+                _tree_provider=lambda _force: tree,
+                _meta_provider=lambda pid: meta.get(pid, ("", "", 0)),
+            ),
+            [],
+        )
+
+        # Cyclic parent reference must terminate cleanly
+        self.assertEqual(
+            conn_tracker.resolve_process_ancestors(
+                10,
+                _tree_provider=lambda _force: tree,
+                _meta_provider=lambda pid: meta.get(pid, ("", "", 0)),
+            ),
+            [{"pid": 20, "process": "b.exe", "process_path": r"C:\Apps\b.exe"}],
+        )
+
+        # ConnectionRegistry attaches ancestors to snapshot rows
+        reg = conn_tracker.ConnectionRegistry(
+            owner_resolver=lambda *_args: (13608, "agy.EXE", r"C:\Users\SR\.mirasim\agents\antigravity\current\bin\agy.EXE"),
+            ancestor_resolver=lambda _pid: [{"pid": 24724, "process": "Mirasim.exe", "process_path": r"C:\Apps\Mirasim.exe"}],
+        )
+        c = reg.register(
+            host="daily-cloudcode-pa.googleapis.com",
+            port=443,
+            protocol="HTTPS",
+            action="PROXY",
+            rule="MATCH,PROXY",
+            client_addr=("127.0.0.1", 51000),
+            server_port=10086,
+            left_sock=None,
+            right_sock=None,
+        )
+        snap = reg.snapshot()
+        self.assertEqual(snap["connections"][0]["id"], c.id)
+        self.assertEqual(
+            snap["connections"][0]["ancestors"],
+            [{"pid": 24724, "process": "Mirasim.exe", "process_path": r"C:\Apps\Mirasim.exe"}],
+        )
+
+    @unittest.skipUnless(os.name == "nt", "Windows Toolhelp32 ancestor lookup")
+    def test_windows_resolve_process_ancestors_finds_parent_of_current_process(self):
+        anc = conn_tracker.resolve_process_ancestors(os.getpid())
+        self.assertIsInstance(anc, list)
+        self.assertGreaterEqual(len(anc), 1)
+        self.assertGreater(anc[0]["pid"], 0)
+        self.assertTrue(anc[0]["process"])
 
     @unittest.skipUnless(os.name == "nt", "Windows GetExtendedTcpTable process lookup")
     def test_windows_resolve_local_tcp_owner_identifies_current_python_process(self):
@@ -273,6 +384,16 @@ class DroidBridgeActiveConnectionsIntegrationTests(unittest.TestCase):
             self.assertTrue(closed_all["ok"])
             self.assertEqual(closed_all["closed"], 1)
             self.assertEqual(closed_all["total"], 0)
+            self.assertGreaterEqual(closed_all["cumulative_tx"], len(b"ping-droidbridge") + len(b"hello-2"))
+            self.assertGreaterEqual(closed_all["cumulative_rx"], len(b"ping-droidbridge") + len(b"hello-2"))
+            self.assertTrue(closed_all["process_stats"])
+
+            # Reset cumulative stats via API
+            reset = self._api("/api/connections/reset-stats", {})
+            self.assertTrue(reset["ok"])
+            self.assertEqual(reset["cumulative_tx"], 0)
+            self.assertEqual(reset["cumulative_rx"], 0)
+            self.assertEqual(reset["process_stats"], [])
         finally:
             t1.close()
             t2.close()

@@ -435,13 +435,13 @@
 
   .conns-panel{display:flex;flex-direction:column;flex:1;min-height:0}
   .conns-summary{
-    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;flex:none;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;flex:none;
     padding:7px 16px;border-bottom:1px solid hsl(var(--line));background:hsl(var(--surface));
     font-size:12px;color:hsl(var(--muted));font-variant-numeric:tabular-nums;
   }
-  .conns-summary-left,.conns-summary-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .conns-summary strong{color:hsl(var(--text));font-weight:650}
-  .conns-summary-traffic{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--muted))}
+  .conns-summary-left,.conns-summary-right{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .conns-summary strong{color:hsl(var(--text));font-weight:650;white-space:nowrap}
+  .conns-summary-traffic{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--muted));font-size:11.5px;white-space:nowrap}
   .conns-body{flex:1;min-height:0;overflow:auto;padding:10px 16px 14px}
   .conn-app-select{
     padding:6px 10px;border:1px solid hsl(var(--line));border-radius:var(--radius-sm);
@@ -454,7 +454,7 @@
   }
   .conn-mode-btn{
     border:0;border-radius:6px;background:transparent;color:hsl(var(--muted));
-    padding:3px 8px;font-size:11.5px;font-weight:600;cursor:pointer;transition:var(--transition);
+    padding:2px 7px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:var(--transition);
   }
   .conn-mode-btn:hover{color:hsl(var(--text))}
   .conn-mode-btn.active{background:hsl(var(--surface));color:hsl(var(--text));box-shadow:0 1px 2px hsl(222 44% 12% / .08)}
@@ -484,6 +484,25 @@
   .conn-group-sub{font-size:11.5px;color:hsl(var(--muted));font-family:ui-monospace,Consolas,monospace}
   .conn-group-right{display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap}
   .conn-group-bytes{font:11.5px/1.4 ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--muted));font-variant-numeric:tabular-nums}
+  .conn-speed-pill{
+    display:inline-flex;align-items:center;padding:1px 7px;border-radius:999px;
+    font:600 11px/1.4 ui-monospace,Consolas,"Cascadia Code",monospace;
+    background:hsl(var(--surface));color:hsl(var(--muted));border:1px solid hsl(var(--line));
+    font-variant-numeric:tabular-nums;white-space:nowrap;
+  }
+  .conn-speed-pill.live{
+    background:hsl(var(--green-soft));color:hsl(var(--green));border-color:hsl(var(--green) / .24);
+  }
+  .conn-row-speed{
+    font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-weight:600;color:hsl(var(--green));
+  }
+  .conn-idle-divider{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    margin:14px 2px 8px;font-size:11.5px;font-weight:600;color:hsl(var(--muted));
+  }
+  .conn-group.idle{opacity:.94;background:hsl(var(--surface-soft) / .55)}
+  .conn-group.idle .conn-group-head{border-bottom:0;background:transparent;padding:8px 13px}
+  .conn-group-static{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
   .conn-group-body{padding:2px 13px 6px}
   .conn-group.collapsed .conn-group-body{display:none}
   .conn-row{
@@ -509,11 +528,15 @@
     background:hsl(var(--primary-soft));color:hsl(var(--primary-hover));border:1px solid hsl(var(--primary) / .14);
   }
   .conn-proc.unknown{background:hsl(var(--surface-soft));color:hsl(var(--muted));border-color:hsl(var(--line))}
+  .conn-proc.child{
+    background:hsl(var(--surface-soft));color:hsl(var(--muted));border-color:hsl(var(--line));
+    font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:10.5px;
+  }
   .conn-meta{
-    display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-left:14px;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-left:14px;
     font-size:11.5px;color:hsl(var(--muted));font-variant-numeric:tabular-nums;
   }
-  .conn-rule{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .conn-rule{max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .conn-bytes{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--text))}
   .conn-side{display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
   .conn-close-btn{
@@ -1071,13 +1094,15 @@
           <div class="conns-summary-left">
             <span class="conn-dot" id="connsSummaryDot"></span>
             <strong id="connsSummaryCount">0 条活跃连接</strong>
-            <span class="conns-summary-traffic" id="connsSummaryTraffic">↑ 0 B · ↓ 0 B</span>
+            <span class="conn-speed-pill" id="connsSummarySpeed" title="最近 2 秒实时吞吐速率">0 B/s</span>
+            <span class="conns-summary-traffic" id="connsSummaryTraffic" title="本次运行累计总流量（含已断开连接）">累计 ↑ 0 B · ↓ 0 B</span>
           </div>
           <div class="conns-summary-right">
             <div class="conn-mode-seg" role="group" aria-label="连接显示方式">
-              <button type="button" class="conn-mode-btn active" id="btnConnModeGroup" data-cmode="group">按应用分组</button>
-              <button type="button" class="conn-mode-btn" id="btnConnModeFlat" data-cmode="flat">平铺列表</button>
+              <button type="button" class="conn-mode-btn active" id="btnConnModeGroup" data-cmode="group" title="按应用分组展示">分组</button>
+              <button type="button" class="conn-mode-btn" id="btnConnModeFlat" data-cmode="flat" title="平铺列表展示">平铺</button>
             </div>
+            <button class="btn tiny" id="btnResetConnStats" type="button" title="清零本次运行累计流量（不断开活跃连接）">清零</button>
             <button class="btn tiny" id="btnConnsRefresh" type="button">刷新</button>
             <button class="btn tiny danger" id="btnCloseAllConns" type="button" hidden>全部断开</button>
           </div>
@@ -2098,6 +2123,15 @@ function formatBytes(n){
   if(v < 1073741824) return (v / 1048576).toFixed(2) + ' MB';
   return (v / 1073741824).toFixed(2) + ' GB';
 }
+function formatRate(bps){
+  return formatBytes(bps) + '/s';
+}
+function formatSpeedPair(txBps, rxBps){
+  const tx = Number(txBps || 0);
+  const rx = Number(rxBps || 0);
+  if(tx <= 0 && rx <= 0) return '0 B/s';
+  return `↑ ${formatRate(tx)} · ↓ ${formatRate(rx)}`;
+}
 function formatDuration(sec){
   const s = Math.max(0, Math.floor(Number(sec || 0)));
   const h = Math.floor(s / 3600);
@@ -2105,14 +2139,9 @@ function formatDuration(sec){
   const r = s % 60;
   return h > 0 ? `${h}:${pad(m)}:${pad(r)}` : `${pad(m)}:${pad(r)}`;
 }
-function connGroupKey(c){
-  const name = String(c.process || '').trim();
-  return name ? name.toLowerCase() : '__unknown__';
-}
-function connMatchedApp(c){
-  const apps = (STATE && STATE.apps) || [];
-  const pPath = String(c.process_path || '').trim().toLowerCase();
-  const pName = String(c.process || '').trim().toLowerCase();
+function matchAppByProc(apps, procPath, procName){
+  const pPath = String(procPath || '').trim().toLowerCase();
+  const pName = String(procName || '').trim().toLowerCase();
   if(pPath){
     const hit = apps.find(a => String(a.resolved_exe || a.exe || '').trim().toLowerCase() === pPath);
     if(hit) return hit;
@@ -2123,18 +2152,62 @@ function connMatchedApp(c){
   }
   return null;
 }
+function connAttribution(c){
+  const apps = (STATE && STATE.apps) || [];
+  const ownProc = String(c.process || '').trim();
+  const directApp = matchAppByProc(apps, c.process_path, ownProc);
+  if(directApp){
+    const appExe = (String(directApp.resolved_exe || directApp.exe || '').split(/[\\/]/).pop() || ownProc);
+    return {
+      key: 'app:' + directApp.id,
+      app: directApp,
+      title: directApp.name,
+      sub: directApp.name.toLowerCase() !== appExe.toLowerCase() ? appExe : '',
+      isChild: false,
+      ownProc,
+    };
+  }
+  const ancestors = Array.isArray(c.ancestors) ? c.ancestors : [];
+  for(const anc of ancestors){
+    if(!anc) continue;
+    const parentApp = matchAppByProc(apps, anc.process_path, anc.process);
+    if(parentApp){
+      const appExe = (String(parentApp.resolved_exe || parentApp.exe || '').split(/[\\/]/).pop() || String(anc.process || ''));
+      return {
+        key: 'app:' + parentApp.id,
+        app: parentApp,
+        title: parentApp.name,
+        sub: parentApp.name.toLowerCase() !== appExe.toLowerCase() ? appExe : '',
+        isChild: true,
+        ownProc,
+      };
+    }
+  }
+  return {
+    key: ownProc ? 'proc:' + ownProc.toLowerCase() : '__unknown__',
+    app: null,
+    title: ownProc || '本机进程',
+    sub: '',
+    isChild: false,
+    ownProc,
+  };
+}
+function connGroupKey(c){
+  return connAttribution(c).key;
+}
 function connMatches(c){
-  if(CONN_APP_FILTER !== 'all' && connGroupKey(c) !== CONN_APP_FILTER) return false;
+  const attr = connAttribution(c);
+  if(CONN_APP_FILTER !== 'all' && attr.key !== CONN_APP_FILTER) return false;
   if(CONN_FILTER !== 'all' && (c.action || '').toUpperCase() !== CONN_FILTER) return false;
   if(CONN_QUERY){
     const q = CONN_QUERY.toLowerCase();
-    const app = connMatchedApp(c);
-    const hay = [c.target, c.host, c.process, app ? app.name : '', c.pid ? 'pid ' + c.pid : '', c.rule, c.protocol, c.client].join(' ').toLowerCase();
+    const hay = [c.target, c.host, c.process, attr.title, attr.sub, c.pid ? 'pid ' + c.pid : '', c.rule, c.protocol, c.client].join(' ').toLowerCase();
     if(!hay.includes(q)) return false;
   }
   return true;
 }
-function renderConnRowHtml(c, showProcPill){
+function renderConnRowHtml(c, showProcPill, attr){
+  attr = attr || connAttribution(c);
   const act = (c.action || '').toUpperCase();
   const cls = act === 'PROXY' ? 'proxy' : act === 'DIRECT' ? 'direct' : 'bad';
   const label = act === 'PROXY' ? '走代理' : act === 'DIRECT' ? '直连' : act;
@@ -2143,9 +2216,22 @@ function renderConnRowHtml(c, showProcPill){
     ? `<button class="event-quick-btn" type="button" data-qhost="${esc(c.host)}" data-qact="${nextAct}" title="将 ${esc(c.host)} 设为${nextAct === 'DIRECT' ? '直连' : '走代理'}">${nextAct === 'DIRECT' ? '改直连' : '改代理'}</button>`
     : '';
   const procLabel = c.process || '本机进程';
-  const procTitle = [c.process_path || c.process || '未知进程', c.pid ? `PID ${c.pid}` : '', c.client ? `来源 ${c.client}` : ''].filter(Boolean).join(' · ');
-  const procPill = showProcPill
-    ? `<span class="conn-proc${c.process ? '' : ' unknown'}" title="${esc(procTitle)}">${esc(procLabel)}</span>`
+  const procTitle = [
+    attr.isChild ? `子进程 · 来自 ${attr.title}` : '',
+    c.process_path || c.process || '未知进程',
+    c.pid ? `PID ${c.pid}` : '',
+    c.client ? `来源 ${c.client}` : '',
+  ].filter(Boolean).join(' · ');
+  let procPill = '';
+  if(showProcPill){
+    procPill = `<span class="conn-proc${c.process ? '' : ' unknown'}" title="${esc(procTitle)}">${esc(procLabel)}</span>`;
+  }else if(attr.isChild && attr.ownProc){
+    procPill = `<span class="conn-proc child" title="${esc(procTitle)}">${esc(attr.ownProc)}</span>`;
+  }
+  const txBps = Number(c.tx_bps || 0);
+  const rxBps = Number(c.rx_bps || 0);
+  const speedMeta = (txBps > 0 || rxBps > 0)
+    ? `<span class="conn-row-speed" title="最近 2 秒实时速率">${formatSpeedPair(txBps, rxBps)}</span>`
     : '';
   return `<div class="conn-row" data-cid="${esc(c.id)}">
     <div class="conn-main">
@@ -2159,6 +2245,7 @@ function renderConnRowHtml(c, showProcPill){
         ${c.rule ? `<span class="conn-rule" title="${esc(c.rule)}">${esc(c.rule)}</span>` : ''}
         <span>已维持 ${formatDuration(c.duration_s)}</span>
         <span class="conn-bytes">↑ ${formatBytes(c.tx_bytes)} · ↓ ${formatBytes(c.rx_bytes)}</span>
+        ${speedMeta}
         ${c.pid ? `<span>PID ${esc(c.pid)}</span>` : ''}
       </div>
     </div>
@@ -2169,72 +2256,217 @@ function renderConnRowHtml(c, showProcPill){
     </div>
   </div>`;
 }
-function syncConnAppFilterOptions(list){
+function buildAppCumulativeStats(){
+  const map = new Map();
+  const procStats = Array.isArray(ACTIVE_CONNS.process_stats) ? ACTIVE_CONNS.process_stats : [];
+  for(const p of procStats){
+    const attr = connAttribution(p);
+    let rec = map.get(attr.key);
+    if(!rec){
+      rec = {
+        key: attr.key,
+        title: attr.title,
+        sub: attr.sub,
+        app: attr.app,
+        tx: 0,
+        rx: 0,
+        tx_bps: 0,
+        rx_bps: 0,
+        conn_count: 0,
+        last_seen_time: '',
+        childProcs: new Set(),
+      };
+      map.set(attr.key, rec);
+    }
+    rec.tx += Number(p.tx_bytes || 0);
+    rec.rx += Number(p.rx_bytes || 0);
+    rec.tx_bps += Number(p.tx_bps || 0);
+    rec.rx_bps += Number(p.rx_bps || 0);
+    rec.conn_count += Number(p.conn_count || 0);
+    if(p.last_seen_time && p.last_seen_time > rec.last_seen_time) rec.last_seen_time = p.last_seen_time;
+    if(attr.isChild && attr.ownProc) rec.childProcs.add(attr.ownProc);
+  }
+  return map;
+}
+function syncConnAppFilterOptions(list, appStats){
   const sel = $('#connAppFilter');
   if(!sel) return;
   const counts = new Map();
   for(const c of list){
-    const key = connGroupKey(c);
-    const prev = counts.get(key);
+    const attr = connAttribution(c);
+    const prev = counts.get(attr.key);
     if(prev){
       prev.count += 1;
     }else{
-      const app = connMatchedApp(c);
-      const rawProc = c.process || '本机进程';
-      const label = app && app.name.toLowerCase() !== rawProc.replace(/\.exe$/i, '').toLowerCase()
-        ? `${app.name} (${rawProc})`
-        : rawProc;
-      counts.set(key, {key, label, count: 1});
+      const subBase = attr.sub ? attr.sub.replace(/\.exe$/i, '').toLowerCase() : '';
+      const label = attr.app && attr.sub && attr.title.toLowerCase() !== subBase
+        ? `${attr.title} (${attr.sub})`
+        : attr.title;
+      counts.set(attr.key, {key: attr.key, label, count: 1});
+    }
+  }
+  if(appStats){
+    for(const st of appStats.values()){
+      if(counts.has(st.key)) continue;
+      if(st.tx <= 0 && st.rx <= 0 && st.conn_count <= 0) continue;
+      const subBase = st.sub ? st.sub.replace(/\.exe$/i, '').toLowerCase() : '';
+      const label = st.app && st.sub && st.title.toLowerCase() !== subBase
+        ? `${st.title} (${st.sub})`
+        : st.title;
+      counts.set(st.key, {key: st.key, label, count: 0, idle: true});
     }
   }
   const sorted = [...counts.values()].sort((a, b) => {
     if(a.key === '__unknown__') return 1;
     if(b.key === '__unknown__') return -1;
+    if(!!a.idle !== !!b.idle) return a.idle ? 1 : -1;
+    const aApp = a.key.startsWith('app:') ? 0 : 1;
+    const bApp = b.key.startsWith('app:') ? 0 : 1;
+    if(aApp !== bApp) return aApp - bApp;
     return a.label.localeCompare(b.label, 'zh-CN');
   });
   if(CONN_APP_FILTER !== 'all' && !counts.has(CONN_APP_FILTER)){
-    sorted.push({key: CONN_APP_FILTER, label: CONN_APP_FILTER === '__unknown__' ? '本机进程' : CONN_APP_FILTER, count: 0});
+    let fallbackLabel = CONN_APP_FILTER === '__unknown__' ? '本机进程' : CONN_APP_FILTER.replace(/^proc:/, '');
+    if(CONN_APP_FILTER.startsWith('app:')){
+      const hit = ((STATE && STATE.apps) || []).find(a => ('app:' + a.id) === CONN_APP_FILTER);
+      if(hit) fallbackLabel = hit.name;
+    }
+    sorted.push({key: CONN_APP_FILTER, label: fallbackLabel, count: 0});
   }
-  const html = `<option value="all">全部应用（${sorted.filter(x => x.count > 0).length}）</option>`
-    + sorted.map(g => `<option value="${esc(g.key)}">${esc(g.label)} (${g.count})</option>`).join('');
+  const activeAppCount = sorted.filter(x => x.count > 0).length;
+  const html = `<option value="all">全部应用（${activeAppCount}）</option>`
+    + sorted.map(g => `<option value="${esc(g.key)}">${esc(g.label)} (${g.idle ? '已断开' : g.count})</option>`).join('');
   if(sel.innerHTML !== html) sel.innerHTML = html;
   sel.value = CONN_APP_FILTER;
+}
+function renderIdleGroupHtml(st, since){
+  const iconImg = st.app && st.app.exists
+    ? `<img src="/api/app/icon?id=${encodeURIComponent(st.app.id)}&v=${encodeURIComponent(st.app.resolved_exe || st.app.exe)}&token=${encodeURIComponent(TOKEN)}" alt="" onerror="this.remove()">`
+    : '';
+  const headTitle = [
+    st.sub || st.title,
+    st.childProcs.size ? `含子进程: ${[...st.childProcs].join(', ')}` : '',
+    st.last_seen_time ? `最近活跃 ${st.last_seen_time}` : '',
+  ].filter(Boolean).join(' · ');
+  const cumTitle = `自 ${since || '本次启动'} 累计（共 ${st.conn_count} 次连接）`;
+  const speedLive = st.tx_bps > 0 || st.rx_bps > 0;
+  const speedHtml = speedLive
+    ? `<span class="conn-speed-pill live" title="最近 2 秒实时速率">${formatSpeedPair(st.tx_bps, st.rx_bps)}</span>`
+    : '';
+  return `<section class="conn-group idle" data-gkey="${esc(st.key)}" data-idle="1">
+    <div class="conn-group-head">
+      <div class="conn-group-static" title="${esc(headTitle)}">
+        <span class="conn-group-avatar" style="background:${colorOf(st.title)}">${iconImg}${esc(initial(st.title))}</span>
+        <span class="conn-group-title">
+          <span class="conn-group-name">${esc(st.title)}</span>
+          ${st.sub ? `<span class="conn-group-sub">${esc(st.sub)}</span>` : ''}
+          <span class="badge">0 条活跃 · 共 ${st.conn_count} 次</span>
+        </span>
+      </div>
+      <div class="conn-group-right">
+        ${speedHtml}
+        <span class="conn-group-bytes" title="${esc(cumTitle)}">累计 ↑ ${formatBytes(st.tx)} · ↓ ${formatBytes(st.rx)}</span>
+      </div>
+    </div>
+  </section>`;
 }
 function renderConnections(){
   const list = ACTIVE_CONNS.connections || [];
   const total = list.length;
-  syncConnAppFilterOptions(list);
+  const appStats = buildAppCumulativeStats();
+  syncConnAppFilterOptions(list, appStats);
   const filtered = list.filter(connMatches);
   const countEl = $('#connsCount');
   const closeAllBtn = $('#btnCloseAllConns');
+  const resetBtn = $('#btnResetConnStats');
   const dotEl = $('#connsSummaryDot');
+  const speedEl = $('#connsSummarySpeed');
+  const trafficEl = $('#connsSummaryTraffic');
 
-  const appTotalCount = new Set(list.map(connGroupKey)).size;
+  const activeKeys = new Set(list.map(connGroupKey));
+  const appTotalCount = activeKeys.size;
   const filteredTx = filtered.reduce((acc, c) => acc + Number(c.tx_bytes || 0), 0);
   const filteredRx = filtered.reduce((acc, c) => acc + Number(c.rx_bytes || 0), 0);
-  const isFiltered = !!(CONN_QUERY || CONN_FILTER !== 'all' || CONN_APP_FILTER !== 'all');
+  const filteredTxBps = filtered.reduce((acc, c) => acc + Number(c.tx_bps || 0), 0);
+  const filteredRxBps = filtered.reduce((acc, c) => acc + Number(c.rx_bps || 0), 0);
+  const isRowFiltered = !!(CONN_QUERY || CONN_FILTER !== 'all');
+  const isFiltered = isRowFiltered || CONN_APP_FILTER !== 'all';
+
+  const globalCumTx = ACTIVE_CONNS.cumulative_tx != null ? Number(ACTIVE_CONNS.cumulative_tx) : Number(ACTIVE_CONNS.total_tx || 0);
+  const globalCumRx = ACTIVE_CONNS.cumulative_rx != null ? Number(ACTIVE_CONNS.cumulative_rx) : Number(ACTIVE_CONNS.total_rx || 0);
+  const globalTxBps = Number(ACTIVE_CONNS.tx_bps || 0);
+  const globalRxBps = Number(ACTIVE_CONNS.rx_bps || 0);
+  const since = ACTIVE_CONNS.stats_since || '';
+
+  const idleApps = [...appStats.values()]
+    .filter(st => !activeKeys.has(st.key) && (st.tx > 0 || st.rx > 0 || st.conn_count > 0))
+    .filter(st => {
+      if(CONN_FILTER !== 'all') return false;
+      if(CONN_APP_FILTER !== 'all' && st.key !== CONN_APP_FILTER) return false;
+      if(CONN_QUERY){
+        const q = CONN_QUERY.toLowerCase();
+        const hay = [st.title, st.sub, ...st.childProcs].join(' ').toLowerCase();
+        if(!hay.includes(q)) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => (b.tx + b.rx) - (a.tx + a.rx));
 
   countEl.textContent = String(total);
   countEl.className = 'badge' + (total ? ' good' : '');
   if(closeAllBtn) closeAllBtn.disabled = total === 0;
-  if(dotEl) dotEl.className = 'conn-dot' + (list.some(c => c.active) ? ' live' : '');
+  const hasAnyCum = globalCumTx > 0 || globalCumRx > 0 || [...appStats.values()].some(st => !activeKeys.has(st.key));
+  if(resetBtn) resetBtn.disabled = !hasAnyCum;
+
+  let showTxBps = globalTxBps;
+  let showRxBps = globalRxBps;
+  let showCumTx = globalCumTx;
+  let showCumRx = globalCumRx;
+  let trafficPrefix = '累计';
+  if(isRowFiltered){
+    showTxBps = filteredTxBps;
+    showRxBps = filteredRxBps;
+    showCumTx = filteredTx;
+    showCumRx = filteredRx;
+    trafficPrefix = '筛选';
+  }else if(CONN_APP_FILTER !== 'all'){
+    const st = appStats.get(CONN_APP_FILTER);
+    showTxBps = st ? st.tx_bps : filteredTxBps;
+    showRxBps = st ? st.rx_bps : filteredRxBps;
+    showCumTx = st ? st.tx : filteredTx;
+    showCumRx = st ? st.rx : filteredRx;
+    trafficPrefix = '应用累计';
+  }
+
+  const speedLive = showTxBps > 0 || showRxBps > 0;
+  if(dotEl) dotEl.className = 'conn-dot' + ((speedLive || list.some(c => c.active)) ? ' live' : '');
   $('#connsSummaryCount').textContent = isFiltered
     ? `显示 ${filtered.length} / ${total} 条活跃连接`
     : (total ? `${total} 条活跃连接 · ${appTotalCount} 个应用` : '0 条活跃连接');
-  $('#connsSummaryTraffic').textContent = `↑ ${formatBytes(isFiltered ? filteredTx : ACTIVE_CONNS.total_tx)} · ↓ ${formatBytes(isFiltered ? filteredRx : ACTIVE_CONNS.total_rx)}`;
+  if(speedEl){
+    speedEl.textContent = formatSpeedPair(showTxBps, showRxBps);
+    speedEl.className = 'conn-speed-pill' + (speedLive ? ' live' : '');
+  }
+  if(trafficEl){
+    trafficEl.textContent = `${trafficPrefix} ↑ ${formatBytes(showCumTx)} · ↓ ${formatBytes(showCumRx)}`;
+    trafficEl.title = isRowFiltered
+      ? '当前筛选命中的活跃连接流量'
+      : `自 ${since || '本次启动'} 累计流量（含已断开连接）· 当前活跃连接 ↑ ${formatBytes(ACTIVE_CONNS.total_tx)} · ↓ ${formatBytes(ACTIVE_CONNS.total_rx)}`;
+  }
 
   document.querySelectorAll('.conn-mode-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.cmode === CONN_GROUP_MODE);
   });
 
   const body = $('#connsBody');
-  if(!filtered.length){
+  const showIdleSection = CONN_GROUP_MODE === 'group' && idleApps.length > 0;
+  if(!filtered.length && !showIdleSection){
     body.innerHTML = total
       ? `<div class="events-empty">当前筛选下没有活跃连接<br><button class="btn tiny" id="btnClearConnFilters" type="button">清除筛选</button></div>`
-      : `<div class="events-empty">当前没有正在维持的连接。从应用台启动应用并保持网页/长连接时，会在这里按应用实时分组显示流量与断开入口。</div>`;
-    const resetBtn = $('#btnClearConnFilters');
-    if(resetBtn){
-      resetBtn.onclick = () => {
+      : `<div class="events-empty">当前没有正在维持的连接。从应用台启动应用并保持网页/长连接时，会在这里按应用实时分组显示网速、累计流量与断开入口。</div>`;
+    const clearBtn = $('#btnClearConnFilters');
+    if(clearBtn){
+      clearBtn.onclick = () => {
         CONN_QUERY = ''; $('#connSearch').value = ''; $('#btnConnSearchClear').hidden = true;
         CONN_FILTER = 'all'; CONN_APP_FILTER = 'all';
         $('#connAppFilter').value = 'all';
@@ -2252,38 +2484,67 @@ function renderConnections(){
 
   const groupMap = new Map();
   for(const c of filtered){
-    const key = connGroupKey(c);
-    let grp = groupMap.get(key);
+    const attr = connAttribution(c);
+    let grp = groupMap.get(attr.key);
     if(!grp){
-      const app = connMatchedApp(c);
-      const rawProc = c.process || '本机进程';
-      const title = app ? app.name : rawProc;
-      const sub = app && app.name.toLowerCase() !== rawProc.toLowerCase() ? rawProc : '';
-      grp = {key, title, sub, rawProc, app, items: [], tx: 0, rx: 0, active: false, pids: new Set()};
-      groupMap.set(key, grp);
+      grp = {
+        key: attr.key,
+        title: attr.title,
+        sub: attr.sub,
+        app: attr.app,
+        items: [],
+        tx: 0,
+        rx: 0,
+        tx_bps: 0,
+        rx_bps: 0,
+        active: false,
+        pids: new Set(),
+        childProcs: new Set(),
+      };
+      groupMap.set(attr.key, grp);
     }
-    grp.items.push(c);
+    grp.items.push({conn: c, attr});
     grp.tx += Number(c.tx_bytes || 0);
     grp.rx += Number(c.rx_bytes || 0);
+    grp.tx_bps += Number(c.tx_bps || 0);
+    grp.rx_bps += Number(c.rx_bps || 0);
     if(c.active) grp.active = true;
     if(c.pid) grp.pids.add(c.pid);
+    if(attr.isChild && attr.ownProc) grp.childProcs.add(attr.ownProc);
   }
   const groups = [...groupMap.values()].sort((a, b) => {
     if(a.key === '__unknown__') return 1;
     if(b.key === '__unknown__') return -1;
+    const aApp = a.key.startsWith('app:') ? 0 : 1;
+    const bApp = b.key.startsWith('app:') ? 0 : 1;
+    if(aApp !== bApp) return aApp - bApp;
     return a.title.localeCompare(b.title, 'zh-CN');
   });
 
-  body.innerHTML = groups.map(g => {
+  const activeHtml = groups.map(g => {
     const collapsed = COLLAPSED_CONN_GROUPS.has(g.key);
+    const cum = !isRowFiltered ? appStats.get(g.key) : null;
+    const gTxBps = cum ? cum.tx_bps : g.tx_bps;
+    const gRxBps = cum ? cum.rx_bps : g.rx_bps;
+    const gCumTx = cum ? cum.tx : g.tx;
+    const gCumRx = cum ? cum.rx : g.rx;
+    const gLive = gTxBps > 0 || gRxBps > 0;
     const iconImg = g.app && g.app.exists
       ? `<img src="/api/app/icon?id=${encodeURIComponent(g.app.id)}&v=${encodeURIComponent(g.app.resolved_exe || g.app.exe)}&token=${encodeURIComponent(TOKEN)}" alt="" onerror="this.remove()">`
       : '';
-    const pidHint = g.pids.size ? `PID ${[...g.pids].join(', ')}` : '';
-    const closeIds = g.items.map(x => x.id).join(',');
+    const headTitle = [
+      g.sub || g.title,
+      g.childProcs.size ? `含子进程: ${[...g.childProcs].join(', ')}` : '',
+      g.pids.size ? `PID ${[...g.pids].join(', ')}` : '',
+    ].filter(Boolean).join(' · ');
+    const bytesLabel = cum ? `累计 ↑ ${formatBytes(gCumTx)} · ↓ ${formatBytes(gCumRx)}` : `↑ ${formatBytes(gCumTx)} · ↓ ${formatBytes(gCumRx)}`;
+    const bytesTitle = cum
+      ? `自 ${since || '本次启动'} 累计（共 ${cum.conn_count} 次连接）· 当前活跃连接 ↑ ${formatBytes(g.tx)} · ↓ ${formatBytes(g.rx)}`
+      : '当前筛选下活跃连接流量';
+    const closeIds = g.items.map(x => x.conn.id).join(',');
     return `<section class="conn-group${collapsed ? ' collapsed' : ''}" data-gkey="${esc(g.key)}">
       <div class="conn-group-head">
-        <button type="button" class="conn-group-toggle" data-gtoggle="${esc(g.key)}" aria-expanded="${String(!collapsed)}" title="${esc(pidHint || g.rawProc)}">
+        <button type="button" class="conn-group-toggle" data-gtoggle="${esc(g.key)}" aria-expanded="${String(!collapsed)}" title="${esc(headTitle)}">
           <svg class="conn-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
           <span class="conn-group-avatar" style="background:${colorOf(g.title)}">${iconImg}${esc(initial(g.title))}</span>
           <span class="conn-group-title">
@@ -2293,13 +2554,48 @@ function renderConnections(){
           </span>
         </button>
         <div class="conn-group-right">
-          <span class="conn-group-bytes">↑ ${formatBytes(g.tx)} · ↓ ${formatBytes(g.rx)}</span>
+          <span class="conn-speed-pill${gLive ? ' live' : ''}" title="最近 2 秒实时速率">${formatSpeedPair(gTxBps, gRxBps)}</span>
+          <span class="conn-group-bytes" title="${esc(bytesTitle)}">${bytesLabel}</span>
           <button type="button" class="conn-close-btn" data-gclose="${esc(g.key)}" data-gtitle="${esc(g.title)}" data-gids="${esc(closeIds)}" title="断开 ${esc(g.title)} 的全部 ${g.items.length} 条连接">断开应用</button>
         </div>
       </div>
-      <div class="conn-group-body">${g.items.map(c => renderConnRowHtml(c, false)).join('')}</div>
+      <div class="conn-group-body">${g.items.map(x => renderConnRowHtml(x.conn, false, x.attr)).join('')}</div>
     </section>`;
   }).join('');
+
+  const idleHtml = showIdleSection
+    ? `<div class="conn-idle-divider"><span>${filtered.length ? `已断开应用的本次累计（${idleApps.length}）` : `当前无活跃连接 · 本次运行按应用累计（${idleApps.length}）`}</span>${since ? `<span>自 ${esc(since)}</span>` : ''}</div>`
+      + idleApps.map(st => renderIdleGroupHtml(st, since)).join('')
+    : '';
+  body.innerHTML = activeHtml + idleHtml;
+}
+function applyConnsSnapshot(r){
+  ACTIVE_CONNS = {
+    connections: r.connections || [],
+    total: Number(r.total || 0),
+    total_tx: Number(r.total_tx || 0),
+    total_rx: Number(r.total_rx || 0),
+    tx_bps: Number(r.tx_bps || 0),
+    rx_bps: Number(r.rx_bps || 0),
+    cumulative_tx: r.cumulative_tx != null ? Number(r.cumulative_tx) : Number(r.total_tx || 0),
+    cumulative_rx: r.cumulative_rx != null ? Number(r.cumulative_rx) : Number(r.total_rx || 0),
+    stats_since: r.stats_since || '',
+    process_stats: Array.isArray(r.process_stats) ? r.process_stats : [],
+  };
+}
+async function resetConnectionStats(){
+  const btn = $('#btnResetConnStats');
+  if(btn) btn.disabled = true;
+  try{
+    const r = await api('/api/connections/reset-stats', {});
+    if(!r || !r.ok){ toast((r && r.error) || '清零失败', {type:'err'}); return; }
+    applyConnsSnapshot(r);
+    renderConnections();
+    toast('已清零本次运行累计流量', {type:'ok'});
+    log('已清零本次运行累计流量统计', 'info');
+  }catch(e){
+    toast('清零统计失败', {type:'err'});
+  }
 }
 async function closeGroupConnections(title, ids){
   if(!ids || !ids.length) return;
@@ -2318,12 +2614,7 @@ async function closeGroupConnections(title, ids){
       last = await api('/api/connections/close', {id});
     }
     if(last && last.ok){
-      ACTIVE_CONNS = {
-        connections: last.connections || [],
-        total: Number(last.total || 0),
-        total_tx: Number(last.total_tx || 0),
-        total_rx: Number(last.total_rx || 0),
-      };
+      applyConnsSnapshot(last);
       renderConnections();
     }else{
       await loadConnections();
@@ -2338,12 +2629,7 @@ async function loadConnections(){
   try{
     const r = await api('/api/connections');
     if(!r || !r.ok) return;
-    ACTIVE_CONNS = {
-      connections: r.connections || [],
-      total: Number(r.total || 0),
-      total_tx: Number(r.total_tx || 0),
-      total_rx: Number(r.total_rx || 0),
-    };
+    applyConnsSnapshot(r);
     renderConnections();
   }catch(e){}
 }
@@ -2351,12 +2637,7 @@ async function closeConnection(id){
   try{
     const r = await api('/api/connections/close', {id});
     if(!r || !r.ok){ toast((r && r.error) || '断开连接失败', {type:'err'}); return; }
-    ACTIVE_CONNS = {
-      connections: r.connections || [],
-      total: Number(r.total || 0),
-      total_tx: Number(r.total_tx || 0),
-      total_rx: Number(r.total_rx || 0),
-    };
+    applyConnsSnapshot(r);
     renderConnections();
     toast(r.closed ? '已断开连接' : '连接已结束', {type:'ok'});
     log(`已手动断开连接 ${id}`, 'info');
@@ -2377,12 +2658,7 @@ async function closeAllConnections(){
   try{
     const r = await api('/api/connections/close', {all:true});
     if(!r || !r.ok){ toast((r && r.error) || '断开失败', {type:'err'}); return; }
-    ACTIVE_CONNS = {
-      connections: r.connections || [],
-      total: Number(r.total || 0),
-      total_tx: Number(r.total_tx || 0),
-      total_rx: Number(r.total_rx || 0),
-    };
+    applyConnsSnapshot(r);
     renderConnections();
     toast(`已断开 ${r.closed} 条连接`, {type:'ok'});
     log(`已手动断开全部 ${r.closed} 条活跃连接`, 'info');
@@ -3864,6 +4140,7 @@ $('#connsBody').addEventListener('click', async e => {
 });
 $('#btnCloseAllConns').onclick = closeAllConnections;
 $('#btnConnsRefresh').onclick = loadConnections;
+$('#btnResetConnStats').onclick = resetConnectionStats;
 $('#connAppFilter').onchange = e => {
   CONN_APP_FILTER = e.target.value || 'all';
   renderConnections();

@@ -113,30 +113,38 @@ async function startServer() {
       rule: 'DOMAIN-SUFFIX,anthropic.com,PROXY',
       client: '127.0.0.1:53120',
       pid: 1672,
-      process: 'Mirasim.exe',
-      process_path: 'C:\\Users\\SR\\AppData\\Local\\Programs\\@mirasimdesktop\\Mirasim.exe',
+      process: 'app.exe',
+      process_path: 'C:\\Apps\\Example\\app.exe',
+      ancestors: [],
       started_time: '11:15:02',
       duration_s: 138,
       tx_bytes: 18432,
       rx_bytes: 1542144,
+      tx_bps: 4096,
+      rx_bps: 122880,
       active: true,
     },
     {
       id: 'c3',
-      host: 'relay.mirasim.ai',
+      host: 'daily-cloudcode-pa.googleapis.com',
       port: 443,
-      target: 'relay.mirasim.ai:443',
+      target: 'daily-cloudcode-pa.googleapis.com:443',
       protocol: 'HTTPS',
       action: 'PROXY',
       rule: 'MATCH,PROXY',
       client: '127.0.0.1:53121',
-      pid: 1672,
-      process: 'Mirasim.exe',
-      process_path: 'C:\\Users\\SR\\AppData\\Local\\Programs\\@mirasimdesktop\\Mirasim.exe',
+      pid: 13608,
+      process: 'agy.EXE',
+      process_path: 'C:\\Users\\SR\\.mirasim\\agents\\antigravity\\current\\bin\\agy.EXE',
+      ancestors: [
+        { pid: 1672, process: 'app.exe', process_path: 'C:\\Apps\\Example\\app.exe' },
+      ],
       started_time: '11:15:20',
       duration_s: 120,
       tx_bytes: 6144,
       rx_bytes: 51200,
+      tx_bps: 4096,
+      rx_bps: 40960,
       active: true,
     },
     {
@@ -151,20 +159,74 @@ async function startServer() {
       pid: 8820,
       process: 'chrome.exe',
       process_path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      ancestors: [],
       started_time: '11:16:10',
       duration_s: 70,
       tx_bytes: 4096,
       rx_bytes: 98304,
+      tx_bps: 0,
+      rx_bps: 0,
       active: false,
     },
   ];
-  const connSnapshot = () => ({
-    ok: true,
-    connections: activeConnections,
-    total: activeConnections.length,
-    total_tx: activeConnections.reduce((acc, c) => acc + c.tx_bytes, 0),
-    total_rx: activeConnections.reduce((acc, c) => acc + c.rx_bytes, 0),
-  });
+  let processStats = [
+    {
+      process: 'app.exe',
+      process_path: 'C:\\Apps\\Example\\app.exe',
+      ancestors: [],
+      tx_bytes: 30720,
+      rx_bytes: 2097152,
+      tx_bps: 4096,
+      rx_bps: 122880,
+      conn_count: 5,
+      last_seen_time: '11:16:15',
+    },
+    {
+      process: 'agy.EXE',
+      process_path: 'C:\\Users\\SR\\.mirasim\\agents\\antigravity\\current\\bin\\agy.EXE',
+      ancestors: [
+        { process: 'app.exe', process_path: 'C:\\Apps\\Example\\app.exe' },
+      ],
+      tx_bytes: 20480,
+      rx_bytes: 524288,
+      tx_bps: 4096,
+      rx_bps: 40960,
+      conn_count: 8,
+      last_seen_time: '11:16:18',
+    },
+    {
+      process: 'chrome.exe',
+      process_path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      ancestors: [],
+      tx_bytes: 4096,
+      rx_bytes: 98304,
+      tx_bps: 0,
+      rx_bps: 0,
+      conn_count: 2,
+      last_seen_time: '11:16:10',
+    },
+  ];
+  const connSnapshot = () => {
+    const activeProcs = new Set(activeConnections.map((c) => c.process.toLowerCase()));
+    const ps = processStats.map((p) => ({
+      ...p,
+      tx_bps: activeProcs.has(p.process.toLowerCase()) ? p.tx_bps : 0,
+      rx_bps: activeProcs.has(p.process.toLowerCase()) ? p.rx_bps : 0,
+    }));
+    return {
+      ok: true,
+      connections: activeConnections,
+      total: activeConnections.length,
+      total_tx: activeConnections.reduce((acc, c) => acc + c.tx_bytes, 0),
+      total_rx: activeConnections.reduce((acc, c) => acc + c.rx_bytes, 0),
+      tx_bps: ps.reduce((acc, p) => acc + p.tx_bps, 0),
+      rx_bps: ps.reduce((acc, p) => acc + p.rx_bps, 0),
+      cumulative_tx: ps.reduce((acc, p) => acc + p.tx_bytes, 0),
+      cumulative_rx: ps.reduce((acc, p) => acc + p.rx_bytes, 0),
+      stats_since: '11:10:00',
+      process_stats: ps,
+    };
+  };
   let phoneStatus = {
     ok: true,
     running: false,
@@ -220,6 +282,11 @@ async function startServer() {
       res.end(iconIco);
       return;
     }
+    if (url.pathname === '/api/app/icon') {
+      res.setHeader('Content-Type', 'image/png');
+      res.end(iconPng);
+      return;
+    }
     if (url.pathname === '/api/state') {
       requests.push({ path: url.pathname });
       res.end(JSON.stringify({ ...state, active_connections: activeConnections.length }));
@@ -245,6 +312,15 @@ async function startServer() {
         closed = before - activeConnections.length;
       }
       res.end(JSON.stringify({ ok: true, closed, ...connSnapshot() }));
+      return;
+    }
+    if (url.pathname === '/api/connections/reset-stats') {
+      requests.push({ path: url.pathname });
+      const activeProcs = new Set(activeConnections.map((c) => c.process.toLowerCase()));
+      processStats = processStats
+        .filter((p) => activeProcs.has(p.process.toLowerCase()))
+        .map((p) => ({ ...p, tx_bytes: 0, rx_bytes: 0, conn_count: activeConnections.filter((c) => c.process.toLowerCase() === p.process.toLowerCase()).length }));
+      res.end(JSON.stringify(connSnapshot()));
       return;
     }
     if (url.pathname === '/api/adb/state') {
@@ -1066,7 +1142,7 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.evaluate(`STATE.proxy_events = ${JSON.stringify(savedEvents)}; renderEvents();`);
   });
 
-  await t.test('active connections tab groups by app, filters by app/action, toggles flat mode, and supports per-app/single/all disconnect', async () => {
+  await t.test('active connections tab merges child processes into parent app group, filters by app/action, toggles flat mode, and supports per-app/single/all disconnect', async () => {
     await browser.evaluate("document.querySelector('#navTraffic').click()");
     await browser.waitFor("document.querySelector('#viewTraffic').hidden === false");
     await browser.evaluate("document.querySelector('#tabConnections').click()");
@@ -1079,17 +1155,35 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       clearEventsHidden: document.querySelector('#btnClearEvents').hidden,
       summary: document.querySelector('#connsSummaryCount').textContent,
       groupNames: [...document.querySelectorAll('#connsBody .conn-group-name')].map(el => el.textContent.trim()),
+      groupKeys: [...document.querySelectorAll('#connsBody .conn-group')].map(el => el.dataset.gkey),
       rowCount: document.querySelectorAll('#connsBody .conn-row').length,
       appOptions: [...document.querySelectorAll('#connAppFilter option')].map(o => o.value),
+      parentHasIcon: !!document.querySelector('#connsBody .conn-group[data-gkey="app:sample-app"] .conn-group-avatar img'),
+      directRowPill: !!document.querySelector('#connsBody .conn-row[data-cid="c1"] .conn-proc'),
+      childRowPill: document.querySelector('#connsBody .conn-row[data-cid="c3"] .conn-proc.child')?.textContent?.trim() || '',
+      summarySpeed: document.querySelector('#connsSummarySpeed')?.textContent?.trim() || '',
+      summaryTraffic: document.querySelector('#connsSummaryTraffic')?.textContent?.trim() || '',
+      parentGroupSpeed: document.querySelector('#connsBody .conn-group[data-gkey="app:sample-app"] .conn-speed-pill')?.textContent?.trim() || '',
+      parentGroupBytes: document.querySelector('#connsBody .conn-group[data-gkey="app:sample-app"] .conn-group-bytes')?.textContent?.trim() || '',
+      rowSpeed: document.querySelector('#connsBody .conn-row[data-cid="c1"] .conn-row-speed')?.textContent?.trim() || '',
     }))()`);
     assert.equal(info.selected, 'true');
     assert.equal(info.eventsHidden, true);
     assert.equal(info.closeAllVisible, true);
     assert.equal(info.clearEventsHidden, true);
     assert.equal(info.summary, '3 条活跃连接 · 2 个应用');
-    assert.deepEqual(info.groupNames, ['chrome.exe', 'Mirasim.exe']);
+    assert.deepEqual(info.groupNames, ['示例应用', 'chrome.exe']);
+    assert.deepEqual(info.groupKeys, ['app:sample-app', 'proc:chrome.exe']);
     assert.equal(info.rowCount, 3);
-    assert.deepEqual(info.appOptions, ['all', 'chrome.exe', 'mirasim.exe']);
+    assert.deepEqual(info.appOptions, ['all', 'app:sample-app', 'proc:chrome.exe']);
+    assert.equal(info.parentHasIcon, true);
+    assert.equal(info.directRowPill, false);
+    assert.equal(info.childRowPill, 'agy.EXE');
+    assert.equal(info.summarySpeed, '↑ 8.0 KB/s · ↓ 160.0 KB/s');
+    assert.equal(info.summaryTraffic, '累计 ↑ 54.0 KB · ↓ 2.59 MB');
+    assert.equal(info.parentGroupSpeed, '↑ 8.0 KB/s · ↓ 160.0 KB/s');
+    assert.equal(info.parentGroupBytes, '累计 ↑ 50.0 KB · ↓ 2.50 MB');
+    assert.equal(info.rowSpeed, '↑ 4.0 KB/s · ↓ 120.0 KB/s');
 
     if (process.env.DROIDBRIDGE_UI_SHOT_CONNS) {
       await new Promise((resolve) => setTimeout(resolve, 220));
@@ -1098,15 +1192,15 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     }
 
     // Collapse & expand one app group
-    await browser.evaluate("document.querySelector('#connsBody .conn-group-toggle[data-gtoggle=\"mirasim.exe\"]').click()");
-    assert.equal(await browser.evaluate("document.querySelector('#connsBody .conn-group[data-gkey=\"mirasim.exe\"]').classList.contains('collapsed')"), true);
-    await browser.evaluate("document.querySelector('#connsBody .conn-group-toggle[data-gtoggle=\"mirasim.exe\"]').click()");
-    assert.equal(await browser.evaluate("document.querySelector('#connsBody .conn-group[data-gkey=\"mirasim.exe\"]').classList.contains('collapsed')"), false);
+    await browser.evaluate("document.querySelector('#connsBody .conn-group-toggle[data-gtoggle=\"app:sample-app\"]').click()");
+    assert.equal(await browser.evaluate("document.querySelector('#connsBody .conn-group[data-gkey=\"app:sample-app\"]').classList.contains('collapsed')"), true);
+    await browser.evaluate("document.querySelector('#connsBody .conn-group-toggle[data-gtoggle=\"app:sample-app\"]').click()");
+    assert.equal(await browser.evaluate("document.querySelector('#connsBody .conn-group[data-gkey=\"app:sample-app\"]').classList.contains('collapsed')"), false);
 
-    // Filter by app dropdown
+    // Filter by app dropdown (shows both direct app.exe and child agy.EXE)
     await browser.evaluate(`(() => {
       const sel = document.querySelector('#connAppFilter');
-      sel.value = 'mirasim.exe';
+      sel.value = 'app:sample-app';
       sel.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
     assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-group').length"), 1);
@@ -1124,10 +1218,19 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.evaluate("document.querySelector('#btnConnModeGroup').click()");
     assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-group').length"), 2);
 
-    // Filter by process name via search
+    // Search by child process name 'agy' matches only child row inside parent app group
     await browser.evaluate(`(() => {
       const input = document.querySelector('#connSearch');
-      input.value = 'Mirasim';
+      input.value = 'agy';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-row').length"), 1);
+    assert.equal(await browser.evaluate("document.querySelector('#connsBody .conn-group')?.dataset.gkey"), 'app:sample-app');
+
+    // Search by parent app name matches both parent and child rows
+    await browser.evaluate(`(() => {
+      const input = document.querySelector('#connSearch');
+      input.value = '示例应用';
       input.dispatchEvent(new Event('input', { bubbles: true }));
     })()`);
     assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-row').length"), 2);
@@ -1139,14 +1242,20 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-row').length"), 1);
     await browser.evaluate("document.querySelector('#connChips [data-cfilter=\"all\"]').click()");
 
-    // Close entire app group (Mirasim.exe with 2 connections -> confirm modal)
-    await browser.evaluate("document.querySelector('#connsBody .conn-close-btn[data-gclose=\"mirasim.exe\"]').click()");
+    // Close entire app group (示例应用 with app.exe + child agy.EXE -> confirm modal closes both,
+    // and 示例应用 remains visible in disconnected cumulative section!)
+    await browser.evaluate("document.querySelector('#connsBody .conn-close-btn[data-gclose=\"app:sample-app\"]').click()");
     await browser.waitFor("document.querySelector('#confirm').hidden === false");
-    assert.match(await browser.evaluate("document.querySelector('#confirmTitle').textContent"), /Mirasim\.exe/);
+    assert.match(await browser.evaluate("document.querySelector('#confirmTitle').textContent"), /示例应用/);
     await browser.evaluate("document.querySelector('#confirmOk').click()");
     await browser.waitFor("document.querySelectorAll('#connsBody .conn-row').length === 1");
     assert.ok(requests.some((r) => r.path === '/api/connections/close' && r.body?.id === 'c1'));
     assert.ok(requests.some((r) => r.path === '/api/connections/close' && r.body?.id === 'c3'));
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-group.idle[data-gkey=\"app:sample-app\"]').length"), 1);
+    assert.equal(
+      await browser.evaluate("document.querySelector('#connsBody .conn-group.idle[data-gkey=\"app:sample-app\"] .conn-group-bytes')?.textContent?.trim()"),
+      '累计 ↑ 50.0 KB · ↓ 2.50 MB',
+    );
 
     // Close all remaining connections with confirmation modal
     await browser.evaluate("document.querySelector('#btnCloseAllConns').click()");
@@ -1156,6 +1265,15 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.waitFor("document.querySelectorAll('#connsBody .conn-row').length === 0");
     assert.ok(requests.some((r) => r.path === '/api/connections/close' && r.body?.all === true));
     assert.equal(await browser.evaluate("document.querySelector('#btnCloseAllConns').disabled"), true);
+    // Disconnected apps still show cumulative totals until reset
+    assert.equal(await browser.evaluate("document.querySelectorAll('#connsBody .conn-group.idle').length"), 2);
+
+    // Reset cumulative stats clears idle cards and zeroes counters
+    await browser.evaluate("document.querySelector('#btnResetConnStats').click()");
+    await browser.waitFor("document.querySelectorAll('#connsBody .conn-group.idle').length === 0");
+    assert.ok(requests.some((r) => r.path === '/api/connections/reset-stats'));
+    assert.equal(await browser.evaluate("document.querySelector('#connsSummaryTraffic').textContent.trim()"), '累计 ↑ 0 B · ↓ 0 B');
+    assert.equal(await browser.evaluate("document.querySelector('#btnResetConnStats').disabled"), true);
 
     // Verify segmented tab buttons never shift horizontally across all 4 traffic center subtabs
     const tabRects = await browser.evaluate(`(() => {

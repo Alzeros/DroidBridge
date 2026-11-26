@@ -3060,6 +3060,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": True, "closed": closed, **_conn_registry.snapshot()})
             return
 
+        if path == "/api/connections/reset-stats":
+            _conn_registry.reset_stats()
+            self.send_json(_conn_registry.snapshot())
+            return
+
         if path in ("/api/app/add", "/api/app/update"):
             kind_val = body.get("kind") or "auto"
             if kind_val not in ("auto", "electron", "firefox", "generic"):
