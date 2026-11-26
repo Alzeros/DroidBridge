@@ -76,6 +76,7 @@ const state = {
 const adbState = {
   adb_found: true,
   adb_path: 'C:\\fake\\adb.exe',
+  adb_source: 'bundled',
   devices: [{ serial: 'SERIAL123', model: 'Test Phone', state: 'device' }],
   forwards: [{ serial: 'SERIAL123', local: 'tcp:5038', remote: 'tcp:5038' }],
   upstream_port: 5038,
@@ -672,6 +673,8 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
   await browser.send('Page.navigate', { url });
   await browser.waitFor("document.readyState === 'complete'");
   await browser.waitFor("document.querySelector('#adbPath')?.textContent.includes('fake')");
+  assert.equal(await browser.evaluate("document.querySelector('#adbSourceBadge')?.textContent?.trim()"), '内置预置');
+  assert.equal(await browser.evaluate("document.querySelector('#adbSourceBadge')?.hidden"), false);
 
   await t.test('renders sidebar navigation, main workspace, and status rail', async () => {
     const shell = await browser.evaluate(`(() => ({

@@ -50,6 +50,7 @@ ICO_PATH = ROOT / "droidbridge.ico"
 PNG_PATH = ROOT / "droidbridge.png"
 SVG_PATH = ROOT / "droidbridge.svg"
 PROFILES_DIR = ROOT / "profiles"
+BUNDLED_ADB_PATH = ROOT / "vendor" / "platform-tools" / ("adb.exe" if os.name == "nt" else "adb")
 RUNTIME_PATH = Path(tempfile.gettempdir()) / "droidbridge_runtime.json"
 
 API_TOKEN = secrets.token_urlsafe(24)
@@ -2437,13 +2438,31 @@ class AdbTool:
         self._lock = threading.Lock()
 
     def resolve(self):
-        """Return the argv prefix used to invoke adb, or None when unavailable."""
+        """Return the argv prefix used to invoke adb, or None when unavailable.
+
+        Precedence: configured adb_path -> system PATH -> bundled vendor/platform-tools/adb.
+        """
         configured = str(self.cfg.get("adb_path") or "").strip()
         if configured:
             candidate = expand(configured)
             return [candidate] if os.path.isfile(candidate) else None
         found = shutil.which("adb")
-        return [found] if found else None
+        if found:
+            return [found]
+        bundled = str(BUNDLED_ADB_PATH)
+        return [bundled] if os.path.isfile(bundled) else None
+
+    def _source_for(self, argv):
+        if not argv:
+            return ""
+        if str(self.cfg.get("adb_path") or "").strip():
+            return "configured"
+        try:
+            if os.path.normcase(os.path.abspath(argv[0])) == os.path.normcase(os.path.abspath(str(BUNDLED_ADB_PATH))):
+                return "bundled"
+        except OSError:
+            pass
+        return "path"
 
     def run(self, args):
         argv = self.resolve()
@@ -2523,6 +2542,7 @@ class AdbTool:
         result = {
             "ok": True,
             "adb_path": "",
+            "adb_source": "",
             "adb_found": False,
             "devices": [],
             "forwards": [],
@@ -2536,6 +2556,7 @@ class AdbTool:
             return result
         result["adb_found"] = True
         result["adb_path"] = argv[0]
+        result["adb_source"] = self._source_for(argv)
         try:
             result["devices"] = self.devices()
             result["forwards"] = self.forwards()

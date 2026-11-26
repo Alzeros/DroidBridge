@@ -740,7 +740,9 @@
   .adb-row{display:grid;grid-template-columns:46px minmax(0,1fr);gap:var(--space-2);padding:6px 0;font-size:13px;align-items:center}
   .adb-key{color:hsl(var(--muted))}
   .adb-val{min-width:0;color:hsl(var(--text));word-break:break-word}
-  .adb-path{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:var(--text-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .adb-path-wrap{display:flex;align-items:center;gap:6px;min-width:0}
+  .adb-path{min-width:0;font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:var(--text-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #adbSourceBadge{flex:none}
   .adb-forward{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-size:var(--text-xs);line-height:1.65}
   .adb-actions{display:flex;gap:var(--space-2);margin-top:var(--space-3);flex-wrap:wrap}
   .adb-actions .btn{flex:1;min-width:96px}
@@ -1324,7 +1326,7 @@
           <span class="badge" id="adbSummaryBadge">检测中</span>
         </div>
         <div class="panel-body">
-          <div class="adb-row"><span class="adb-key">adb</span><span class="adb-val adb-path" id="adbPath">检测中…</span></div>
+          <div class="adb-row"><span class="adb-key">adb</span><span class="adb-val adb-path-wrap"><span class="adb-path" id="adbPath">检测中…</span><span class="badge" id="adbSourceBadge" hidden></span></span></div>
           <div class="adb-row"><span class="adb-key">设备</span><span class="adb-val" id="adbDevices">—</span></div>
           <div class="adb-row" id="adbDevicePickerRow" hidden>
             <span class="adb-key">目标</span>
@@ -1338,8 +1340,8 @@
           </div>
           <div class="inspect" id="adbHint" hidden></div>
           <div class="divider"></div>
-          <label class="field-label" for="sAdbPath">adb 可执行文件路径（留空则使用 PATH 中的 adb）
-            <input class="field-input" id="sAdbPath" placeholder="C:\Users\...\platform-tools\adb.exe">
+          <label class="field-label" for="sAdbPath">adb 可执行文件路径（留空优先使用系统 PATH，找不到则自动用内置预置 adb）
+            <input class="field-input" id="sAdbPath" placeholder="留空自动识别（PATH → 内置预置 adb）">
           </label>
           <div class="inline-actions">
             <button class="btn tiny primary" id="btnAdbSettingsSave" type="button">保存 ADB 路径</button>
@@ -1826,6 +1828,14 @@ function renderAdb(){
   const pathEl = $('#adbPath');
   pathEl.textContent = s.adb_found ? s.adb_path : '未找到';
   pathEl.title = s.adb_found ? s.adb_path : '请在下方配置 adb 可执行文件路径';
+  const srcBadge = $('#adbSourceBadge');
+  if(srcBadge){
+    const srcLabels = {bundled:'内置预置', path:'系统 PATH', configured:'自定义'};
+    const lbl = s.adb_found ? (srcLabels[s.adb_source] || '') : '';
+    srcBadge.textContent = lbl;
+    srcBadge.className = 'badge' + (s.adb_source === 'bundled' ? ' good' : '');
+    srcBadge.hidden = !lbl;
+  }
   const devices = s.devices || [];
   const online = devices.filter(d => d.state === 'device');
   $('#adbDevices').innerHTML = devices.length

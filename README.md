@@ -12,7 +12,7 @@ Python 纯标准库实现，零第三方依赖。
   - 固定监听 `127.0.0.1:10086`，读取并按文件变更自动缓存 `rules.yaml`，支持 `DOMAIN`、`DOMAIN-SUFFIX`、`DOMAIN-KEYWORD`、`IP-CIDR`、`MATCH` 与 `DIRECT` / `PROXY`；支持明文 HTTP `Transfer-Encoding: chunked` 请求体转发，并在失败时记录具体错误原因。
   - `DIRECT` 目标由电脑直连，`PROXY` 目标通过手机 Clash 的 `127.0.0.1:5038`。支持 HTTP 转发和 HTTPS `CONNECT`，只绑定回环地址。
   - 支持在界面内直接编辑、校验与保存 `rules.yaml`，提供域名命中测试，并在「分流实况」中支持一键将域名加入 `DIRECT` 或 `PROXY`。
-  - 内置**手动** ADB 管理面板：查看已连接设备与现有端口转发，支持多设备切换，手动建立 / 删除 `adb forward` 转发，操作后立即联动刷新代理链路状态。
+  - 内置**手动** ADB 管理面板与预置 `adb`（`vendor/platform-tools/`）：优先使用手动配置路径与系统 `PATH`，找不到时自动兜底使用内置 `adb`，无需额外下载；支持查看已连接设备、多设备切换与手动建立 / 删除 `adb forward` 转发。
 - **三层代理注入**
   - **普通 / Node 应用**：注入 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`，并清空 `NO_PROXY`，确保请求进入本地分流入口。
   - **Electron / Chromium 应用**：自动根据同目录特征文件识别，并额外注入 `--proxy-server`（解决 Windows 下 Chromium 忽略 `*_PROXY` 环境变量的问题），在启动前对已运行实例做单实例锁提示。
@@ -56,7 +56,7 @@ Python 纯标准库实现，零第三方依赖。
 4. **管理 ADB 转发（可选）**
    - 主界面的「手机 Clash (ADB)」面板显示 adb 路径、已连接设备和当前端口转发。
    - 转发缺失时点「建立转发」，会按当前「手机 Clash 上游端口」建立 `adb forward tcp:<端口> tcp:<端口>`；不再需要时点「删除转发」。
-   - 面板全程手动，不会自动连接设备或自动建立转发。若 adb 不在 PATH 中，在「代理设置」里填写 `adb.exe` 的完整路径。
+   - 面板全程手动，不会自动连接设备或自动建立转发。若系统 `PATH` 中没有 `adb`，会自动使用项目内置的 `vendor/platform-tools/adb.exe`，也可在「连接与设置」中手动指定路径。
 5. **创建桌面快捷方式（可选）**
    - 双击 `create_desktop_shortcut.vbs` 即可在桌面生成带图标的 `DroidBridge.lnk` 快捷方式（支持直接固定到任务栏）。
 
@@ -72,6 +72,7 @@ Python 纯标准库实现，零第三方依赖。
 | `rules.example.yaml` | Clash 风格规则模板（首次运行会生成本地 `rules.yaml`） |
 | `test_routing.py` / `test_adb.py` | 分流规则与 ADB 辅助模块的单元测试 |
 | `droidbridge.ico` / `.png` / `.svg` | 应用图标资源 |
+| `vendor/` | 内置预置依赖：`platform-tools/`（最小 Windows `adb` 运行文件）与 `scrcpy-server` |
 | `launch_droidbridge.vbs` / `.bat` | 静默启动脚本 |
 | `debug_droidbridge.bat` | 调试启动脚本 |
 | `create_desktop_shortcut.vbs` | 一键创建桌面快捷方式脚本 |

@@ -110,17 +110,45 @@ class AdbToolTests(unittest.TestCase):
         tool = self.tool()
         with patch.object(droidbridge.shutil, "which", return_value=r"C:\fake\adb.exe"):
             self.assertEqual(tool.resolve(), [r"C:\fake\adb.exe"])
+            self.assertEqual(tool._source_for(tool.resolve()), "path")
+
+    def test_resolve_falls_back_to_bundled_adb_when_path_missing(self):
+        tool = self.tool()
+        self.assertTrue(
+            droidbridge.BUNDLED_ADB_PATH.is_file(),
+            f"expected bundled adb at {droidbridge.BUNDLED_ADB_PATH}",
+        )
+        with patch.object(droidbridge.shutil, "which", return_value=None):
+            resolved = tool.resolve()
+            self.assertEqual(resolved, [str(droidbridge.BUNDLED_ADB_PATH)])
+            self.assertEqual(tool._source_for(resolved), "bundled")
+
+    def test_bundled_adb_executes_version(self):
+        tool = self.tool()
+        with patch.object(droidbridge.shutil, "which", return_value=None):
+            code, out, err = tool.run(["version"])
+        self.assertEqual(code, 0, f"bundled adb failed: {err}")
+        self.assertIn("Android Debug Bridge", out)
 
     def test_resolve_returns_none_without_adb(self):
         tool = self.tool()
-        with patch.object(droidbridge.shutil, "which", return_value=None):
+        missing_bundled = self.root / "no-vendor" / "adb.exe"
+        with (
+            patch.object(droidbridge.shutil, "which", return_value=None),
+            patch.object(droidbridge, "BUNDLED_ADB_PATH", missing_bundled),
+        ):
             self.assertIsNone(tool.resolve())
 
     def test_state_reports_missing_adb(self):
         tool = self.tool()
-        with patch.object(droidbridge.shutil, "which", return_value=None):
+        missing_bundled = self.root / "no-vendor" / "adb.exe"
+        with (
+            patch.object(droidbridge.shutil, "which", return_value=None),
+            patch.object(droidbridge, "BUNDLED_ADB_PATH", missing_bundled),
+        ):
             state = tool.state()
         self.assertFalse(state["adb_found"])
+        self.assertEqual(state["adb_source"], "")
         self.assertIn("未找到 adb", state["error"])
         self.assertEqual(state["upstream_port"], 5038)
 
