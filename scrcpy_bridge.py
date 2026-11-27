@@ -1637,6 +1637,10 @@ class PhoneMirrorManager:
                             with self._lock:
                                 if cur_slot is not None:
                                     cur_slot.last_sent_clipboard = (clip_text, time.monotonic())
+                    elif cmd_type == "get_clipboard":
+                        with self._lock:
+                            if cur_slot is not None:
+                                cur_slot.last_sent_clipboard = ("", 0.0)
                     packets = encode_control_command(cmd, seq_fn=cur.next_sequence)
                     cur.send_control_packets(packets)
                 except (ValueError, ScrcpyError) as exc:

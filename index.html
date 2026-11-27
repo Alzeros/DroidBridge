@@ -735,8 +735,6 @@
   }
   .phone-ctrl-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .phone-ctrl-grid .btn{padding:5px 8px;font-size:12px;justify-content:center;white-space:nowrap}
-  .phone-quick-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed hsl(var(--line))}
-  .phone-quick-row .btn{padding:5px 8px;font-size:12px;justify-content:center;white-space:nowrap}
   .phone-text-area{
     display:block;width:100%;min-height:52px;max-height:110px;resize:vertical;padding:7px 9px;
     border:1px solid hsl(var(--line));border-radius:var(--radius-sm);
@@ -882,6 +880,22 @@
     box-shadow:0 12px 28px hsl(222 40% 14% / .18);
   }
   .phone-popout-ime[hidden]{display:none}
+  .phone-ctx-menu{
+    position:fixed;z-index:40;min-width:176px;padding:5px;border-radius:10px;
+    background:hsl(var(--surface));border:1px solid hsl(var(--line));
+    box-shadow:0 12px 30px hsl(222 44% 12% / .18),0 2px 6px hsl(222 44% 12% / .08);
+    display:flex;flex-direction:column;gap:2px;user-select:none;
+  }
+  .phone-ctx-menu[hidden]{display:none}
+  .phone-ctx-item{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;
+    padding:6px 10px;border:0;border-radius:7px;background:transparent;color:hsl(var(--text));
+    font-size:12.5px;text-align:left;cursor:pointer;transition:background var(--transition),color var(--transition);
+  }
+  .phone-ctx-item:hover{background:hsl(var(--primary-soft));color:hsl(var(--primary))}
+  .phone-ctx-kbd{font:11px ui-monospace,Consolas,monospace;color:hsl(var(--muted))}
+  .phone-ctx-item:hover .phone-ctx-kbd{color:hsl(var(--primary))}
+  .phone-ctx-sep{height:1px;margin:3px 6px;background:hsl(var(--line))}
 
   /* View 5: Settings & ADB */
   .settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
@@ -1376,13 +1390,12 @@
         <button type="button" class="btn tiny" id="btnPopIme" title="多行输入与剪贴板">输入</button>
         <button type="button" class="btn tiny" id="btnPopShot" title="截屏">截屏</button>
         <button type="button" class="btn tiny phone-rec-btn" id="btnPopRec" title="录屏">录屏</button>
-        <button type="button" class="btn tiny" id="btnPopUpload" title="传文件 / 装 APK">文件</button>
       </div>
     </div>
     <div class="phone-popout-ime" id="phonePopoutIme" hidden>
-      <textarea class="phone-text-area" id="popImeInput" placeholder="输入多行或长文本，回车发送并粘贴到当前手机应用…"></textarea>
+      <textarea class="phone-text-area" id="popImeInput" placeholder="输入多行或长文本，回车直接填入手机输入框…"></textarea>
       <div class="phone-text-actions">
-        <button type="button" class="btn primary" id="btnPopImeSend">发送并粘贴</button>
+        <button type="button" class="btn primary" id="btnPopImeSend" title="写入手机并自动粘贴到当前光标所在的输入框">发送到输入框</button>
         <button type="button" class="btn" id="btnPopImePull">拉取手机剪贴板</button>
         <button type="button" class="btn" id="btnPopImeClose">收起</button>
       </div>
@@ -1408,7 +1421,6 @@
           <strong>松开以发送到手机</strong>
           <span>.apk 自动安装，其他文件保存至 /sdcard/Download/</span>
         </div>
-        <input type="file" id="phoneFileInput" multiple hidden>
         <div class="phone-empty" id="phoneEmpty">
           <div class="phone-empty-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 18h.01"/></svg>
@@ -1432,7 +1444,7 @@
             </div>
           </div>
           <div class="phone-nav-bar" role="group" aria-label="Android 系统导航键">
-            <button type="button" class="phone-nav-btn" id="btnPhoneBack" title="返回 / 点亮屏幕（画布内按右键或 Esc 也可返回）">
+            <button type="button" class="phone-nav-btn" id="btnPhoneBack" title="返回 / 点亮屏幕（按 Esc 也可返回）">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
               <span>返回</span>
             </button>
@@ -1464,27 +1476,23 @@
               <button type="button" class="btn" id="btnPhoneRotate" disabled>旋转屏幕</button>
               <button type="button" class="btn" id="btnPhoneCollapse" disabled>收起面板</button>
             </div>
-            <div class="phone-quick-row">
-              <button type="button" class="btn" id="btnPhoneLaunchClash" disabled title="在手机上一键打开代理客户端">打开手机上游</button>
-              <button type="button" class="btn" id="btnPhoneUpload" disabled title="选择文件发送到 /sdcard/Download/，选 .apk 自动安装">传文件 / APK</button>
-            </div>
           </div>
         </section>
 
         <section class="panel" id="phoneInputPanel">
           <div class="panel-head">
-            <div class="panel-title"><span class="panel-mark chain">IME</span><h3>剪贴板与中文输入</h3></div>
+            <div class="panel-title"><span class="panel-mark chain">IME</span><h3>文本输入与剪贴板</h3></div>
           </div>
           <div class="panel-body">
-            <textarea class="phone-text-area" id="phoneTextInput" placeholder="输入中文或长文本，回车发送并粘贴（Shift+Enter 换行）" aria-label="中文与文本输入框"></textarea>
+            <textarea class="phone-text-area" id="phoneTextInput" placeholder="输入多行或长文本，回车直接填入手机输入框（Shift+Enter 换行）" aria-label="多行文本输入框"></textarea>
             <div class="phone-text-actions">
-              <button type="button" class="btn primary" id="btnPhonePaste" disabled>发送并粘贴</button>
-              <button type="button" class="btn" id="btnPhoneCopy" disabled>仅写剪贴板</button>
+              <button type="button" class="btn primary" id="btnPhonePaste" disabled title="将文本直接填入手机当前光标所在的输入框">发送到输入框</button>
+              <button type="button" class="btn" id="btnPhoneCopy" disabled title="仅写入手机剪贴板，不自动粘贴，方便稍后手动粘贴">仅复制到手机</button>
             </div>
             <label class="phone-clip-auto" style="margin-top:7px" title="开启后点击手机画面直接打字由电脑输入法管理中/英与标点，避免手机输入法篡改英文符号；终端/游戏场景可取消勾选">
               <input type="checkbox" id="phoneDirectPcIme" checked>画面直打跟随电脑输入法（Shift 切中/英）
             </label>
-            <div class="phone-text-hint">点击手机画面即可直接输入中英文与符号，支持 Ctrl+V/A/C/X/Z；Ctrl+滚轮缩放；拖入文件直传/装 APK。</div>
+            <div class="phone-text-hint">点击手机画面可直接打字；支持 Ctrl+V 粘贴电脑剪贴板、Ctrl+C 复制手机选中文本、Ctrl+A/X/Z；Ctrl+滚轮缩放；拖入文件直传/装 APK。</div>
             <div class="phone-clip-sync">
               <div class="phone-clip-head">
                 <span class="phone-clip-head-left">
@@ -1698,6 +1706,17 @@
       <button class="btn primary" id="confirmOk" type="button">确定</button>
     </div>
   </div>
+</div>
+
+<div class="phone-ctx-menu" id="phoneContextMenu" role="menu" aria-label="手机画面快捷菜单" hidden>
+  <button type="button" class="phone-ctx-item" role="menuitem" data-pctx="paste"><span>粘贴电脑剪贴板</span><span class="phone-ctx-kbd">Ctrl+V</span></button>
+  <button type="button" class="phone-ctx-item" role="menuitem" data-pctx="copy"><span>复制选中内容</span><span class="phone-ctx-kbd">Ctrl+C</span></button>
+  <button type="button" class="phone-ctx-item" role="menuitem" data-pctx="cut"><span>剪切选中内容</span><span class="phone-ctx-kbd">Ctrl+X</span></button>
+  <button type="button" class="phone-ctx-item" role="menuitem" data-pctx="select_all"><span>全选</span><span class="phone-ctx-kbd">Ctrl+A</span></button>
+  <div class="phone-ctx-sep" role="separator"></div>
+  <button type="button" class="phone-ctx-item" role="menuitem" data-pctx="back"><span>返回上一页</span><span class="phone-ctx-kbd">Esc</span></button>
+  <button type="button" class="phone-ctx-item" role="menuitem" data-pctx="home"><span>回到主页</span><span class="phone-ctx-kbd">Home</span></button>
+  <button type="button" class="phone-ctx-item" role="menuitem" data-pctx="shot"><span>保存截屏</span></button>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -4075,12 +4094,6 @@ function renderPhoneUi(){
     const el = $(id);
     if(el) el.disabled = !running;
   }
-  const hasDevice = !!(running || targetDevice);
-  const upBtn = $('#btnPhoneUpload');
-  if(upBtn){
-    upBtn.disabled = !hasDevice || PHONE_UPLOADING;
-    upBtn.textContent = PHONE_UPLOADING ? '传输中…' : '传文件 / APK';
-  }
   renderPhoneDeviceInfo();
 
   if(s.quality && $('#phoneQuality').value !== String(s.quality) && document.activeElement !== $('#phoneQuality')){
@@ -4307,9 +4320,6 @@ function renderPhoneDeviceInfo(){
   const info = PHONE_DEVICE_INFO;
   const batEl = $('#phoneStatBattery');
   const netEl = $('#phoneStatNet');
-  const clashBtn = $('#btnPhoneLaunchClash');
-  const onlineDevices = (ADB_STATE && ADB_STATE.devices || []).filter(d => d.state === 'device');
-  const hasDevice = !!(PHONE_STATUS.running || onlineDevices.length);
   if(batEl){
     if(info && info.battery && info.battery.level != null){
       const b = info.battery;
@@ -4325,23 +4335,6 @@ function renderPhoneDeviceInfo(){
       netEl.textContent = info.network.ip ? `${info.network.type} · ${info.network.ip}` : info.network.type;
     }else{
       netEl.textContent = '—';
-    }
-  }
-  if(clashBtn){
-    const apps = (info && Array.isArray(info.proxy_apps)) ? info.proxy_apps : [];
-    const primary = apps[0] || null;
-    if(primary){
-      clashBtn.textContent = `打开 ${primary.label}`;
-      clashBtn.dataset.pkg = primary.package;
-      clashBtn.dataset.label = primary.label;
-      clashBtn.disabled = !hasDevice;
-      clashBtn.title = `在手机上一键打开 ${primary.label} (${primary.package})`;
-    }else{
-      clashBtn.textContent = '打开手机上游';
-      clashBtn.dataset.pkg = '';
-      clashBtn.dataset.label = '';
-      clashBtn.disabled = true;
-      clashBtn.title = hasDevice ? '手机上未检测到常见代理客户端' : '未检测到在线设备';
     }
   }
 }
@@ -4372,12 +4365,30 @@ function handleDeviceClipboard(text){
   }
   const copyBtn = $('#btnPhoneClipCopy');
   if(copyBtn) copyBtn.disabled = false;
-  if(PHONE_CLIP_AUTO && navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(val).then(() => {
-      toast('已自动同步手机剪贴板', {type:'ok'});
-    }).catch(() => {
-      toast('收到手机剪贴板（点右侧「复制」写入电脑）');
-    });
+  if(PHONE_CLIP_AUTO){
+    const fallbackExecCopy = () => {
+      const prev = document.activeElement;
+      const ta = document.createElement('textarea');
+      ta.value = val;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try{ ok = !!document.execCommand('copy'); }catch(e){}
+      ta.remove();
+      if(prev && typeof prev.focus === 'function'){
+        try{ prev.focus({preventScroll: true}); }catch(e){}
+      }
+      toast(ok ? '已自动同步手机剪贴板' : '收到手机剪贴板（点右侧「复制」写入电脑）', ok ? {type:'ok'} : undefined);
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(val).then(() => {
+        toast('已自动同步手机剪贴板', {type:'ok'});
+      }).catch(fallbackExecCopy);
+    }else{
+      fallbackExecCopy();
+    }
   }else{
     toast('收到手机剪贴板');
   }
@@ -4474,27 +4485,6 @@ function togglePhoneRecording(){
     PHONE_RECORDER = null;
     updatePhoneRecButton();
     toast('启动录屏失败: ' + e, {type:'err'});
-  }
-}
-async function launchPhoneClash(){
-  const btn = $('#btnPhoneLaunchClash');
-  const pkg = btn && btn.dataset.pkg;
-  const label = (btn && btn.dataset.label) || pkg;
-  if(!pkg) return;
-  btn.disabled = true;
-  try{
-    const serial = PHONE_STATUS.serial || SELECTED_ADB_SERIAL || '';
-    const r = await api('/api/phone/launch-app', {serial, package: pkg});
-    if(!r || !r.ok){
-      toast((r && r.error) || `打开 ${label} 失败`, {type:'err'});
-      return;
-    }
-    toast(`已在手机打开 ${label}`, {type:'ok'});
-    log(`已在手机打开 ${label} (${pkg})`, 'ok');
-  }catch(e){
-    toast(`打开 ${label} 失败`, {type:'err'});
-  }finally{
-    renderPhoneDeviceInfo();
   }
 }
 async function uploadPhoneFiles(fileList){
@@ -4771,37 +4761,89 @@ const PHONE_CTRL_KEY_MAP = {
   Home: 122,
   End: 123,
 };
+let PHONE_PASTE_EVENT_SEEN = false;
+let PHONE_PASTE_FALLBACK_TIMER = null;
+function isOtherEditableTarget(el){
+  if(!el) return false;
+  if(el.id === 'phoneImeProxy' || el.id === 'phoneCanvas') return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el.isContentEditable;
+}
+function isPhoneShortcutContext(target){
+  if(!PHONE_STATUS.running) return false;
+  if(!IS_PHONE_POPOUT && ACTIVE_VIEW !== 'phone') return false;
+  if(!$('#confirm').hidden || !$('#editor').hidden || !$('#phoneAppModal').hidden) return false;
+  if($('#phonePopoutIme') && !$('#phonePopoutIme').hidden) return false;
+  if(isOtherEditableTarget(target || document.activeElement)) return false;
+  return true;
+}
+function handlePhoneCtrlShortcut(e){
+  if(e._phoneCtrlHandled) return true;
+  if(!(e.ctrlKey || e.metaKey) || e.altKey) return false;
+  if(PHONE_DIRECT_COMPOSING || e.isComposing || e.keyCode === 229) return false;
+  const k = String(e.key || '').toLowerCase();
+  if(k === 'a'){
+    e._phoneCtrlHandled = true;
+    e.preventDefault(); e.stopPropagation();
+    queuePhoneControlCmd({type:'key', keycode:29, action:'tap', meta:0x3000});
+    return true;
+  }
+  if(k === 'c'){
+    const sel = window.getSelection ? String(window.getSelection() || '').trim() : '';
+    if(sel) return false;
+    e._phoneCtrlHandled = true;
+    e.preventDefault(); e.stopPropagation();
+    queuePhoneControlCmd({type:'get_clipboard', copy_key:1});
+    return true;
+  }
+  if(k === 'x'){
+    e._phoneCtrlHandled = true;
+    e.preventDefault(); e.stopPropagation();
+    queuePhoneControlCmd({type:'get_clipboard', copy_key:2});
+    return true;
+  }
+  if(k === 'z'){
+    e._phoneCtrlHandled = true;
+    e.preventDefault(); e.stopPropagation();
+    queuePhoneControlCmd({type:'key', keycode:54, action:'tap', meta:e.shiftKey ? 0x3041 : 0x3000});
+    return true;
+  }
+  if(k === 'v'){
+    e._phoneCtrlHandled = true;
+    focusPhoneImeProxy();
+    PHONE_PASTE_EVENT_SEEN = false;
+    clearTimeout(PHONE_PASTE_FALLBACK_TIMER);
+    PHONE_PASTE_FALLBACK_TIMER = setTimeout(async () => {
+      if(PHONE_PASTE_EVENT_SEEN || !PHONE_STATUS.running) return;
+      let txt = '';
+      if(navigator.clipboard && navigator.clipboard.readText){
+        try{ txt = await navigator.clipboard.readText(); }catch(err){}
+      }
+      if(txt){
+        queuePhoneDirectText(txt, true);
+      }else{
+        queuePhoneControlCmd({type:'key', keycode:279, action:'tap'});
+      }
+    }, 50);
+    return true;
+  }
+  return false;
+}
 function handlePhoneImeProxyKeydown(e){
   if(!PHONE_STATUS.running) return;
   if(PHONE_DIRECT_COMPOSING || e.isComposing || e.keyCode === 229) return;
   if((e.ctrlKey || e.metaKey) && !e.altKey){
-    const k = String(e.key || '').toLowerCase();
-    if(k === 'a'){
-      e.preventDefault(); e.stopPropagation();
-      queuePhoneControlCmd({type:'key', keycode:29, action:'tap', meta:0x3000});
-      return;
-    }
-    if(k === 'c'){
-      e.preventDefault(); e.stopPropagation();
-      queuePhoneControlCmd({type:'key', keycode:31, action:'tap', meta:0x3000});
-      setTimeout(() => sendPhoneWs({type:'get_clipboard'}), 120);
-      return;
-    }
-    if(k === 'x'){
-      e.preventDefault(); e.stopPropagation();
-      queuePhoneControlCmd({type:'key', keycode:52, action:'tap', meta:0x3000});
-      setTimeout(() => sendPhoneWs({type:'get_clipboard'}), 120);
-      return;
-    }
-    if(k === 'z'){
-      e.preventDefault(); e.stopPropagation();
-      queuePhoneControlCmd({type:'key', keycode:54, action:'tap', meta:e.shiftKey ? 0x3041 : 0x3000});
-      return;
-    }
+    handlePhoneCtrlShortcut(e);
     return;
   }
   if(e.altKey) return;
   if(e.key === 'Escape'){
+    if($('#phoneContextMenu') && !$('#phoneContextMenu').hidden){
+      e.preventDefault();
+      e.stopPropagation();
+      closePhoneContextMenu();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     queuePhoneControlCmd({type:'action', name:'back_or_screen_on'});
@@ -5328,7 +5370,6 @@ $('#btnPopBack').onclick = () => sendPhoneWs({type:'action', name:'back_or_scree
 $('#btnPopHome').onclick = () => sendPhoneWs({type:'key', keycode:3, action:'tap'});
 $('#btnPopShot').onclick = capturePhoneScreenshot;
 $('#btnPopRec').onclick = togglePhoneRecording;
-$('#btnPopUpload').onclick = () => { const inp = $('#phoneFileInput'); if(inp){ inp.value = ''; inp.click(); } };
 $('#btnPopIme').onclick = () => {
   const box = $('#phonePopoutIme');
   box.hidden = !box.hidden;
@@ -5361,9 +5402,6 @@ $('#popImeInput').addEventListener('keydown', e => {
 });
 $('#btnPhoneShot').onclick = capturePhoneScreenshot;
 $('#btnPhoneRec').onclick = togglePhoneRecording;
-$('#btnPhoneLaunchClash').onclick = launchPhoneClash;
-$('#btnPhoneUpload').onclick = () => { const inp = $('#phoneFileInput'); if(inp){ inp.value = ''; inp.click(); } };
-$('#phoneFileInput').onchange = e => { if(e.target.files && e.target.files.length) uploadPhoneFiles(e.target.files); };
 $('#btnPhoneClipPull').onclick = () => {
   if(!PHONE_STATUS.running) return;
   if(sendPhoneWs({type:'get_clipboard'})) toast('正在读取手机剪贴板…');
@@ -5472,16 +5510,99 @@ if(phoneImeProxy){
     phoneImeProxy.value = '';
     if(val) queuePhoneDirectText(val, /[^\x20-\x7e]/.test(val));
   });
-  phoneImeProxy.addEventListener('paste', e => {
-    if(!PHONE_STATUS.running) return;
-    e.preventDefault();
-    const txt = (e.clipboardData || window.clipboardData)?.getData('text') || '';
-    if(txt) queuePhoneDirectText(txt, true);
-  });
   phoneImeProxy.addEventListener('keydown', handlePhoneImeProxyKeydown);
 }
+document.addEventListener('paste', e => {
+  if(!isPhoneShortcutContext(e.target)) return;
+  PHONE_PASTE_EVENT_SEEN = true;
+  clearTimeout(PHONE_PASTE_FALLBACK_TIMER);
+  e.preventDefault();
+  const txt = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+  if(txt){
+    queuePhoneDirectText(txt, true);
+  }else{
+    queuePhoneControlCmd({type:'key', keycode:279, action:'tap'});
+  }
+});
+function closePhoneContextMenu(){
+  const menu = $('#phoneContextMenu');
+  if(menu) menu.hidden = true;
+}
+function openPhoneContextMenu(x, y){
+  const menu = $('#phoneContextMenu');
+  if(!menu || !PHONE_STATUS.running) return;
+  menu.hidden = false;
+  menu.style.left = '0px';
+  menu.style.top = '0px';
+  const r = menu.getBoundingClientRect();
+  const maxX = Math.max(8, window.innerWidth - r.width - 8);
+  const maxY = Math.max(8, window.innerHeight - r.height - 8);
+  menu.style.left = Math.max(8, Math.min(maxX, Math.round(x))) + 'px';
+  menu.style.top = Math.max(8, Math.min(maxY, Math.round(y))) + 'px';
+}
+async function runPhoneContextAction(act){
+  closePhoneContextMenu();
+  if(!PHONE_STATUS.running) return;
+  if(act === 'paste'){
+    let txt = '';
+    if(navigator.clipboard && navigator.clipboard.readText){
+      try{ txt = await navigator.clipboard.readText(); }catch(e){}
+    }
+    if(txt){
+      queuePhoneDirectText(txt, true);
+    }else{
+      queuePhoneControlCmd({type:'key', keycode:279, action:'tap'});
+    }
+    focusPhoneImeProxy();
+    return;
+  }
+  if(act === 'copy'){
+    queuePhoneControlCmd({type:'get_clipboard', copy_key:1});
+    focusPhoneImeProxy();
+    return;
+  }
+  if(act === 'cut'){
+    queuePhoneControlCmd({type:'get_clipboard', copy_key:2});
+    focusPhoneImeProxy();
+    return;
+  }
+  if(act === 'select_all'){
+    queuePhoneControlCmd({type:'key', keycode:29, action:'tap', meta:0x3000});
+    focusPhoneImeProxy();
+    return;
+  }
+  if(act === 'back'){
+    queuePhoneControlCmd({type:'action', name:'back_or_screen_on'});
+    focusPhoneImeProxy();
+    return;
+  }
+  if(act === 'home'){
+    queuePhoneControlCmd({type:'key', keycode:3, action:'tap'});
+    focusPhoneImeProxy();
+    return;
+  }
+  if(act === 'shot'){
+    capturePhoneScreenshot();
+  }
+}
+if($('#phoneContextMenu')){
+  $('#phoneContextMenu').addEventListener('click', e => {
+    const item = e.target.closest('button[data-pctx]');
+    if(item) runPhoneContextAction(item.dataset.pctx);
+  });
+}
+document.addEventListener('pointerdown', e => {
+  const menu = $('#phoneContextMenu');
+  if(menu && !menu.hidden && !menu.contains(e.target)) closePhoneContextMenu();
+});
+window.addEventListener('blur', closePhoneContextMenu);
 const phoneCanvas = $('#phoneCanvas');
-phoneCanvas.addEventListener('contextmenu', e => e.preventDefault());
+phoneCanvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if(!PHONE_STATUS.running) return;
+  focusPhoneImeProxy(e);
+  openPhoneContextMenu(e.clientX, e.clientY);
+});
 phoneCanvas.addEventListener('mousedown', e => {
   if(e.button === 0 && PHONE_STATUS.running){
     e.preventDefault();
@@ -5490,12 +5611,8 @@ phoneCanvas.addEventListener('mousedown', e => {
 });
 phoneCanvas.addEventListener('pointerdown', e => {
   if(!PHONE_STATUS.running) return;
+  closePhoneContextMenu();
   focusPhoneImeProxy(e);
-  if(e.button === 2){
-    e.preventDefault();
-    sendPhoneWs({type:'action', name:'back_or_screen_on'});
-    return;
-  }
   if(e.button !== 0) return;
   const pt = mapPhoneCanvasPoint(e);
   if(!pt) return;
@@ -5536,7 +5653,7 @@ if(typeof ResizeObserver === 'function'){
   if($('#phoneLayout')) phoneRo.observe($('#phoneLayout'));
   if($('#phoneViewport')) phoneRo.observe($('#phoneViewport'));
 }
-window.addEventListener('resize', () => fitPhoneCanvas());
+window.addEventListener('resize', () => { closePhoneContextMenu(); fitPhoneCanvas(); });
 setInterval(() => {
   if(!PHONE_STATUS.running) return;
   const ts = performance.now();
@@ -5547,9 +5664,13 @@ setInterval(() => {
 
 document.addEventListener('keydown', e => {
   if(e.key === 'Escape'){
+    if($('#phoneContextMenu') && !$('#phoneContextMenu').hidden){ closePhoneContextMenu(); return; }
     if(!$('#confirm').hidden){ settleConfirm(false); return; }
     if(!$('#phoneAppModal').hidden){ closePhoneAppModal(); return; }
     if(!$('#editor').hidden){ closeEditor(); return; }
+  }
+  if((e.ctrlKey || e.metaKey) && !e.altKey && isPhoneShortcutContext(e.target)){
+    if(handlePhoneCtrlShortcut(e)) return;
   }
   if(IS_PHONE_POPOUT) return;
   const t = e.target;

@@ -1641,8 +1641,7 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       statSize: document.querySelector('#phoneStatSize').textContent,
       statBattery: document.querySelector('#phoneStatBattery').textContent,
       statNet: document.querySelector('#phoneStatNet').textContent,
-      clashBtnText: document.querySelector('#btnPhoneLaunchClash').textContent.trim(),
-      clashBtnDisabled: document.querySelector('#btnPhoneLaunchClash').disabled,
+      quickRowRemoved: !document.querySelector('#btnPhoneLaunchClash') && !document.querySelector('#btnPhoneUpload') && !document.querySelector('#btnPopUpload'),
       shotVisible: !document.querySelector('#btnPhoneShot').hidden,
       recVisible: !document.querySelector('#btnPhoneRec').hidden,
       metaSub: document.querySelector('#phoneMetaSub').textContent,
@@ -1652,23 +1651,11 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(connected.statSize, '512×1080');
     assert.equal(connected.statBattery, '84% · 已插电 · 22.6°C');
     assert.equal(connected.statNet, 'Wi-Fi · 172.20.10.4');
-    assert.equal(connected.clashBtnText, '打开 FlClash');
-    assert.equal(connected.clashBtnDisabled, false);
+    assert.equal(connected.quickRowRemoved, true);
     assert.equal(connected.shotVisible, true);
     assert.equal(connected.recVisible, true);
     assert.match(connected.metaSub, /SM-G9730.*512×1080.*上限 60/);
     assert.equal(connected.toggleText, '断开连接');
-
-    // One-click Clash launch
-    await browser.evaluate("document.querySelector('#btnPhoneLaunchClash').click()");
-    const launchDeadline = Date.now() + 4000;
-    let launchReq;
-    while (Date.now() < launchDeadline) {
-      launchReq = requests.findLast((r) => r.path === '/api/phone/launch-app');
-      if (launchReq) break;
-      await new Promise((resolve) => setTimeout(resolve, 40));
-    }
-    assert.deepEqual(launchReq?.body, { serial: 'SERIAL123', package: 'com.follow.clash' });
 
     // Pull phone clipboard -> displays synced text and enables copy button
     await browser.evaluate("document.querySelector('#btnPhoneClipPull').click()");
@@ -1897,6 +1884,44 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
       const ctrlA = await waitWs((m) => m.type === 'key' && m.keycode === 29 && m.meta === 0x3000);
       assert.ok(cnDirect, 'direct Chinese IME composition on canvas must paste directly');
       assert.ok(ctrlA, 'Ctrl+A on proxy must forward Android KEYCODE_A with META_CTRL');
+
+      // Ctrl+C & Ctrl+V work even when focus is on document.body (e.g. after Alt+Tab from another PC app)
+      await popBrowser.evaluate(`(() => {
+        document.activeElement && document.activeElement.blur && document.activeElement.blur();
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true }));
+        const dt = new DataTransfer();
+        dt.setData('text/plain', '来自电脑CtrlV的文本');
+        document.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+      })()`);
+      const ctrlC = await waitWs((m) => m.type === 'get_clipboard' && m.copy_key === 1);
+      const ctrlV = await waitWs((m) => m.type === 'clipboard' && m.text === '来自电脑CtrlV的文本' && m.paste === true);
+      assert.ok(ctrlC, 'Ctrl+C anywhere in phone view must emit native scrcpy get_clipboard(copy_key=1)');
+      assert.ok(ctrlV, 'Ctrl+V paste anywhere in phone view must forward clipboard text with paste=true');
+
+      // Right-click on canvas opens quick context menu instead of unexpectedly navigating Back
+      const backBefore = wsMessages.filter((m) => m.type === 'action' && m.name === 'back_or_screen_on').length;
+      const menuRect = await popBrowser.evaluate(`(() => {
+        const c = document.querySelector('#phoneCanvas');
+        const r = c.getBoundingClientRect();
+        c.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 2, pointerId: 2, clientX: r.right - 20, clientY: r.bottom - 20 }));
+        c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.right - 20, clientY: r.bottom - 20 }));
+        const m = document.querySelector('#phoneContextMenu');
+        const mr = m.getBoundingClientRect();
+        return { hidden: m.hidden, left: Math.round(mr.left), right: Math.round(mr.right), bottom: Math.round(mr.bottom), vw: window.innerWidth, vh: window.innerHeight };
+      })()`);
+      assert.equal(menuRect.hidden, false);
+      assert.ok(menuRect.right <= menuRect.vw && menuRect.bottom <= menuRect.vh, `context menu must stay inside viewport: ${JSON.stringify(menuRect)}`);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      assert.equal(wsMessages.filter((m) => m.type === 'action' && m.name === 'back_or_screen_on').length, backBefore, 'right-click must NOT send back_or_screen_on');
+      if (process.env.DROIDBRIDGE_UI_SHOT_CTX_MENU) {
+        const shot = await popBrowser.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(process.env.DROIDBRIDGE_UI_SHOT_CTX_MENU, Buffer.from(shot.data, 'base64'));
+      }
+      // Clicking "返回上一页" in context menu sends back_or_screen_on and closes menu
+      await popBrowser.evaluate("document.querySelector('#phoneContextMenu button[data-pctx=\"back\"]').click()");
+      const ctxBack = await waitWs((m) => m.type === 'action' && m.name === 'back_or_screen_on');
+      assert.ok(ctxBack);
+      assert.equal(await popBrowser.evaluate("document.querySelector('#phoneContextMenu').hidden"), true);
 
       // Regression: resizing popout window wider than 760px / 960px / 1080px MUST fill full width (never collapse to 220px sidebar column!)
       await popBrowser.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 780, deviceScaleFactor: 1, mobile: false });
