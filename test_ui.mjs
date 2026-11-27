@@ -983,7 +983,7 @@ test('DroidBridge dashboard keeps ADB settings independent from proxy settings',
       hint: document.querySelector('#settingsHint').textContent,
     }))()`);
     assert.equal(settings.rulesFile, 'rules.yaml');
-    assert.match(settings.help, /所有代理请求统一进入本地分流入口/);
+    assert.match(settings.help, /所有请求统一进入本地分流网关/);
     assert.equal(settings.hasRouterToggle, false);
     assert.equal(settings.hasGlobalBypass, false);
     assert.equal(settings.hasAppBypass, false);
@@ -1799,7 +1799,7 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
 
     // Pin FlClash to Apps shelf and open virtual display window
     await browser.evaluate("document.querySelector('#phoneAppList button[data-mpin=\"com.follow.clash\"]').click()");
-    await browser.waitFor("document.querySelector('#phoneAppList button[data-mpin=\"com.follow.clash\"]')?.textContent?.trim() === '已钉住'");
+    await browser.waitFor("document.querySelector('#phoneAppList button[data-mpin=\"com.follow.clash\"]')?.textContent?.trim() === '已固定'");
     await browser.evaluate("document.querySelector('#phoneAppList button[data-mopen=\"com.follow.clash\"]').click()");
     await browser.waitFor("document.querySelectorAll('#phoneSessionsList .phone-session-pill').length === 1");
     assert.ok(requests.some((r) => r.path === '/api/phone/app/open' && r.body?.package === 'com.follow.clash' && r.body?.popout === true));
@@ -2119,7 +2119,7 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.equal(layout.mobileToggleVisible, true);
     assert.equal(layout.summaryVisible, true);
     assert.equal(layout.summaryText, '链路畅通');
-    assert.match(layout.summaryMeta, /入口 12ms · Clash 8ms/);
+    assert.match(layout.summaryMeta, /网关 12ms · 上游 8ms/);
     if (process.env.DROIDBRIDGE_UI_SHOT_MOBILE) {
       const shot = await browser.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(process.env.DROIDBRIDGE_UI_SHOT_MOBILE, Buffer.from(shot.data, 'base64'));

@@ -260,7 +260,7 @@ class RoutingTests(unittest.TestCase):
         with droidbridge._proxy_events_lock:
             latest = droidbridge._proxy_events[0]
         self.assertFalse(latest["ok"])
-        self.assertIn("上游代理拒绝连接", latest["error"])
+        self.assertIn("手机上游拒绝连接", latest["error"])
 
     def test_rules_helpers_extract_save_and_quick_add(self):
         self.assertEqual(droidbridge.extract_test_host("https://API.cmaiot.cn:8443/v1?a=1"), "api.cmaiot.cn")

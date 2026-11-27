@@ -7,7 +7,7 @@
 <link rel="icon" type="image/x-icon" sizes="16x16 20x20 24x24 32x32 48x48 64x64 256x256" href="/favicon.ico?v=2">
 <link rel="icon" type="image/svg+xml" href="/icon.svg?v=2">
 <link rel="icon" type="image/png" sizes="256x256" href="/icon.png?v=2">
-<title>DroidBridge · 进程级网络应用台</title>
+<title>DroidBridge · 本地分流网关</title>
 <style>
   :root{
     --bg:220 28% 96.5%; --sidebar:220 25% 94.4%; --surface:0 0% 100%; --surface-soft:220 33% 98%;
@@ -1022,14 +1022,14 @@
   <div class="sidebar-top">
     <div class="brand">
       <div class="logo"><img src="/icon.svg?v=2" alt="DroidBridge"></div>
-      <div><h1>DroidBridge</h1><p>进程级代理台</p></div>
+      <div><h1>DroidBridge</h1><p>本地分流网关</p></div>
     </div>
     <div class="mobile-top-controls">
       <span class="dot" id="mobileProxyDot"></span>
-      <label class="toggle" title="开启后，从应用台启动的进程才会注入代理环境">
-        <input type="checkbox" id="mobileProxyEnabled" aria-label="代理注入开关">
+      <label class="toggle" title="开启后，从应用台启动的应用将接入本地分流网关">
+        <input type="checkbox" id="mobileProxyEnabled" aria-label="应用网关开关">
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
-        <span>代理</span>
+        <span>网关</span>
       </label>
     </div>
   </div>
@@ -1060,9 +1060,9 @@
   <div class="side-bottom">
     <div class="side-dock">
       <div class="dock-toggle-row">
-        <div class="dock-state"><span class="dot" id="proxyDot"></span><span>代理注入</span></div>
-        <label class="toggle" title="开启后，从应用台启动的进程才会注入代理环境">
-          <input type="checkbox" id="proxyEnabled" aria-label="代理注入">
+        <div class="dock-state"><span class="dot" id="proxyDot"></span><span>应用网关</span></div>
+        <label class="toggle" title="开启后，从应用台启动的应用将接入本地分流网关">
+          <input type="checkbox" id="proxyEnabled" aria-label="应用网关">
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -1090,14 +1090,14 @@
     <div class="page-head">
       <div>
         <h2 id="appsTitle">我的应用</h2>
-        <p class="page-sub">仅从这里启动的应用使用分流代理，不影响桌面快捷方式与其他程序</p>
+        <p class="page-sub">从这里启动的电脑应用会接入本地分流网关，不影响桌面快捷方式与其他程序</p>
       </div>
       <button class="btn primary" id="btnAdd" type="button">+ 添加应用</button>
     </div>
 
-    <button class="mobile-chain-summary" id="mobileChainSummary" type="button" aria-label="查看完整代理链路">
+    <button class="mobile-chain-summary" id="mobileChainSummary" type="button" aria-label="查看完整网关链路">
       <span class="mobile-chain-main"><span class="dot" id="mobileChainDot"></span><strong id="mobileChainText">链路检测中…</strong></span>
-      <span class="mobile-chain-meta" id="mobileChainMeta">入口 — · Clash —</span>
+      <span class="mobile-chain-meta" id="mobileChainMeta">网关 — · 上游 —</span>
       <span class="mobile-chain-detail">详情 <span aria-hidden="true">›</span></span>
     </button>
 
@@ -1136,14 +1136,14 @@
 
         <div class="recent-strip" id="recentTrafficBar">
           <span class="recent-strip-text" id="recentTrafficText">等待分流请求…</span>
-          <button type="button" class="recent-strip-link" id="btnJumpTraffic">查看分流监控 ›</button>
+          <button type="button" class="recent-strip-link" id="btnJumpTraffic">查看分流中心 ›</button>
         </div>
       </div>
 
-      <aside class="status-rail" id="statusRail" aria-label="代理链路与出口状态">
+      <aside class="status-rail" id="statusRail" aria-label="网关链路与出口状态">
         <section class="panel chain-panel" id="chainPanel">
           <div class="panel-head">
-            <div class="panel-title"><span class="panel-mark chain">链路</span><h3>代理链路</h3></div>
+            <div class="panel-title"><span class="panel-mark chain">链路</span><h3>网关链路</h3></div>
             <span class="badge" id="chainBadge">检测中</span>
           </div>
           <div class="panel-body">
@@ -1153,14 +1153,14 @@
                 <span class="hop-state" id="hopAppsState"></span>
               </li>
               <li class="hop" id="hopEntry" style="--hop:var(--primary)">
-                <button class="hop" type="button" id="hopEntryBtn" title="前往代理端口设置">
-                  <div class="hop-main"><strong>DroidBridge 入口</strong><span id="hopEntrySub">—</span></div>
+                <button class="hop" type="button" id="hopEntryBtn" title="前往网关端口设置">
+                  <div class="hop-main"><strong>DroidBridge 网关</strong><span id="hopEntrySub">—</span></div>
                   <span class="hop-state" id="hopEntryState"></span>
                 </button>
               </li>
               <li class="hop" id="hopClash" style="--hop:var(--teal)">
                 <button class="hop" type="button" id="hopClashBtn" title="前往 ADB 转发管理">
-                  <div class="hop-main"><strong>手机 Clash</strong><span id="hopClashSub">—</span></div>
+                  <div class="hop-main"><strong>手机上游</strong><span id="hopClashSub">—</span></div>
                   <span class="hop-state" id="hopClashState"></span>
                 </button>
               </li>
@@ -1172,7 +1172,7 @@
 
             <div class="exit-ip-wrap" id="exitIpWrap">
               <div class="exit-ip-head">
-                <span title="经由手机 Clash 上游访问 https://api.ip.sb/geoip 获取当前代理出口信息">出口 IP</span>
+                <span title="经由手机上游访问 https://api.ip.sb/geoip 获取当前出口信息">出口 IP</span>
                 <button type="button" class="exit-ip-refresh" id="btnRefreshExitIp" title="手动刷新出口 IP" aria-label="刷新出口 IP">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
                   <span>刷新</span>
@@ -1190,7 +1190,7 @@
             </div>
 
             <div class="spark-wrap">
-              <div class="spark-head"><span title="手机 Clash 上游端口延迟趋势">上游延迟趋势</span><strong id="sparkNow">—</strong></div>
+              <div class="spark-head"><span title="手机上游端口延迟趋势">上游延迟趋势</span><strong id="sparkNow">—</strong></div>
               <svg id="spark" viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true">
                 <defs>
                   <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1308,7 +1308,7 @@
         <div class="tester-body">
           <div class="tester-row">
             <label class="tester-label" for="ruleTestHost">命中测试</label>
-            <input id="ruleTestHost" placeholder="输入域名或 URL，如 https://api.cmaiot.cn/v1">
+            <input id="ruleTestHost" placeholder="输入域名或 URL，如 https://api.github.com/v1">
             <button type="button" class="btn tiny" id="btnRuleTest">测试</button>
           </div>
           <div class="inspect" id="ruleTestResult" hidden></div>
@@ -1380,7 +1380,7 @@
       </div>
     </div>
     <div class="phone-popout-ime" id="phonePopoutIme" hidden>
-      <textarea class="phone-text-area" id="popImeInput" placeholder="输入中文，回车发送并粘贴到当前手机应用…"></textarea>
+      <textarea class="phone-text-area" id="popImeInput" placeholder="输入多行或长文本，回车发送并粘贴到当前手机应用…"></textarea>
       <div class="phone-text-actions">
         <button type="button" class="btn primary" id="btnPopImeSend">发送并粘贴</button>
         <button type="button" class="btn" id="btnPopImePull">拉取手机剪贴板</button>
@@ -1414,7 +1414,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 18h.01"/></svg>
           </div>
           <h3 id="phoneEmptyTitle">未连接手机屏幕</h3>
-          <p id="phoneEmptyDesc">点击下方按钮即可开启内嵌投屏，支持鼠标点击/滑动、滚轮、中文输入与息屏省电操控。</p>
+          <p id="phoneEmptyDesc">点击下方按钮即可开启内嵌投屏，支持电脑输入法直打中英文、独立小窗开应用、拖入文件/装 APK 与息屏操控。</p>
           <div class="inspect warn" id="phoneWebCodecsWarn" hidden style="margin-top:0;max-width:440px">当前浏览器不支持 WebCodecs (VideoDecoder)，请使用 Chrome 94+ 或 Edge 94+。</div>
           <div class="inspect bad" id="phoneErrorBox" hidden style="margin-top:0;max-width:440px"></div>
           <div class="phone-empty-actions">
@@ -1465,7 +1465,7 @@
               <button type="button" class="btn" id="btnPhoneCollapse" disabled>收起面板</button>
             </div>
             <div class="phone-quick-row">
-              <button type="button" class="btn" id="btnPhoneLaunchClash" disabled title="在手机上一键打开 Clash / 代理客户端">打开 Clash</button>
+              <button type="button" class="btn" id="btnPhoneLaunchClash" disabled title="在手机上一键打开代理客户端">打开手机上游</button>
               <button type="button" class="btn" id="btnPhoneUpload" disabled title="选择文件发送到 /sdcard/Download/，选 .apk 自动安装">传文件 / APK</button>
             </div>
           </div>
@@ -1543,7 +1543,7 @@
     <div class="page-head">
       <div>
         <h2>连接与设置</h2>
-        <p class="page-sub">集中管理手机 ADB 转发、代理端口与托盘常驻行为</p>
+        <p class="page-sub">集中管理手机 ADB 转发、本地网关端口与托盘常驻行为</p>
       </div>
     </div>
 
@@ -1579,30 +1579,30 @@
 
       <section class="panel" id="proxyPanel">
         <div class="panel-head">
-          <div class="panel-title"><span class="panel-mark chain">NET</span><h3>代理与分流端口</h3></div>
+          <div class="panel-title"><span class="panel-mark chain">NET</span><h3>网关与上游端口</h3></div>
           <span class="badge" id="proxyPanelBadge">检测中</span>
         </div>
         <div class="panel-body">
           <div class="two-col">
-            <label class="field-label" for="sHost">手机 Clash 上游主机
+            <label class="field-label" for="sHost">手机上游主机
               <input class="field-input" id="sHost" placeholder="127.0.0.1">
             </label>
-            <label class="field-label" for="sPort">手机 Clash 上游端口
+            <label class="field-label" for="sPort">手机上游端口
               <input class="field-input" id="sPort" type="number" placeholder="5038">
             </label>
           </div>
           <div class="two-col">
-            <label class="field-label" for="sListenPort">DroidBridge 分流入口端口
+            <label class="field-label" for="sListenPort">DroidBridge 网关端口
               <input class="field-input" id="sListenPort" type="number" placeholder="10086">
             </label>
             <label class="field-label" for="sRulesFile">分流规则文件
               <input class="field-input" id="sRulesFile" placeholder="rules.yaml">
             </label>
           </div>
-          <div class="field-help">所有代理请求统一进入本地分流入口，由规则文件决定 DIRECT 或 PROXY。</div>
+          <div class="field-help">所有请求统一进入本地分流网关，由规则文件决定 DIRECT 或 PROXY。</div>
           <div class="inspect" id="settingsHint"></div>
           <div class="inline-actions">
-            <button class="btn tiny primary" id="btnSettingsSave" type="button">保存代理设置</button>
+            <button class="btn tiny primary" id="btnSettingsSave" type="button">保存网关设置</button>
           </div>
           <div class="divider"></div>
           <div class="service-box">
@@ -1657,7 +1657,7 @@
 <div class="modal-mask" id="phoneAppModal" hidden>
   <div class="modal phone-picker" role="dialog" aria-modal="true" aria-labelledby="phoneAppModalTitle">
     <h3 id="phoneAppModalTitle">独立窗口打开手机应用</h3>
-    <p style="margin:0 0 10px;font-size:12.5px;color:hsl(var(--muted))">通过 Android 虚拟副屏在电脑弹出独立小窗运行，不打扰手机主屏；可一键钉到「应用台」随时启动。</p>
+    <p style="margin:0 0 10px;font-size:12.5px;color:hsl(var(--muted))">通过 Android 虚拟副屏在电脑弹出独立小窗运行，不打扰手机主屏；可一键固定到「应用台」随时启动。</p>
     <div class="phone-picker-bar">
       <div class="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -2010,7 +2010,7 @@ function renderExitIp(){
     valEl.disabled = true;
     ccEl.hidden = true;
     detailsEl.hidden = true;
-    metaEl.textContent = '正在通过手机 Clash 访问 api.ip.sb…';
+    metaEl.textContent = '正在通过手机上游访问 api.ip.sb…';
     metaEl.className = 'exit-ip-meta';
     dockIp.textContent = '查询中…';
     dockIp.disabled = true;
@@ -2235,10 +2235,10 @@ function renderChain(){
   setHop('hopApps', runningApps.length ? 'good' : '', runningApps.length ? `${runningApps.length} 个运行中` : '未启动');
   $('#hopAppsSub').textContent = runningApps.length
     ? runningApps.slice(0,3).map(a => a.name).join('、') + (runningApps.length > 3 ? ` 等 ${runningApps.length} 个` : '')
-    : '从左侧应用台启动后才会走代理';
+    : '从左侧应用台启动后才会接入网关';
 
   const entryOn = p.enabled && STATE.proxy_online;
-  $('#hopEntrySub').textContent = p.enabled ? `${STATE.proxy_url || '—'} · YAML 分流` : '代理注入已关闭';
+  $('#hopEntrySub').textContent = p.enabled ? `${STATE.proxy_url || '—'} · YAML 分流` : '应用网关已关闭';
   setHop('hopEntry', !p.enabled ? '' : (entryOn ? 'good' : 'bad'),
     !p.enabled ? '已关闭' : (entryOn ? `${STATE.proxy_latency_ms}ms` : '未监听'));
 
@@ -2262,13 +2262,13 @@ function renderChain(){
   else if(entryOn || clashOn){ badge.textContent = '部分连通'; badge.className = 'badge warn'; }
   else { badge.textContent = '未连通'; badge.className = 'badge bad'; }
 
-  const mobileState = !p.enabled ? '代理已关闭' : (netOk ? '链路畅通' : (entryOn || clashOn ? '部分连通' : '链路未连通'));
+  const mobileState = !p.enabled ? '网关已关闭' : (netOk ? '链路畅通' : (entryOn || clashOn ? '部分连通' : '链路未连通'));
   $('#mobileChainText').textContent = mobileState;
   $('#mobileChainDot').className = 'dot ' + (!p.enabled ? '' : (netOk ? 'on' : (entryOn || clashOn ? 'warn' : 'off')));
   $('#mobileChainMeta').textContent = !p.enabled
     ? '从这里启动的应用将直接联网'
-    : `入口 ${entryOn ? STATE.proxy_latency_ms + 'ms' : '离线'} · Clash ${clashOn ? STATE.proxy_upstream_latency_ms + 'ms' : '离线'}`;
-  $('#mobileChainSummary').setAttribute('aria-label', mobileState + '，查看完整代理链路');
+    : `网关 ${entryOn ? STATE.proxy_latency_ms + 'ms' : '离线'} · 上游 ${clashOn ? STATE.proxy_upstream_latency_ms + 'ms' : '离线'}`;
+  $('#mobileChainSummary').setAttribute('aria-label', mobileState + '，查看完整网关链路');
   renderSpark();
 }
 function renderSpark(){
@@ -3004,7 +3004,7 @@ function renderEvents(){
     jumpBtn.textContent = `查看全部 ${events.length} 条分流记录 ›`;
   }else{
     recentText.textContent = '启动应用并访问网页后，这里会摘要显示最新分流动态';
-    jumpBtn.textContent = '查看分流监控 ›';
+    jumpBtn.textContent = '查看分流中心 ›';
   }
 
   const sig = JSON.stringify([EVENT_FILTER, EVENT_QUERY, events.length, filtered]);
@@ -3063,7 +3063,7 @@ function syncSettingsForms(force=false){
 
   const hint = $('#settingsHint');
   const ruleNote = STATE.routing_rules_error ? ` · ${STATE.routing_rules_error}` : '';
-  hint.textContent = `分流入口 ${STATE.proxy_url} · 上游 ${STATE.proxy_upstream_url} · 入口 ${STATE.proxy_online?'在线':'离线'} · 上游 ${STATE.proxy_upstream_online?'在线':'离线'}${ruleNote}`;
+  hint.textContent = `本地网关 ${STATE.proxy_url} · 上游 ${STATE.proxy_upstream_url} · 网关 ${STATE.proxy_online?'在线':'离线'} · 上游 ${STATE.proxy_upstream_online?'在线':'离线'}${ruleNote}`;
   hint.className = STATE.routing_rules_error ? 'inspect bad' : 'inspect';
 }
 
@@ -3074,9 +3074,9 @@ function render(){
   const dotCls = 'dot ' + (p.enabled ? (STATE.proxy_online ? 'on' : 'off') : '');
   $('#proxyDot').className = dotCls;
   $('#mobileProxyDot').className = dotCls;
-  $('#proxyText').textContent = !p.enabled ? '代理注入已关闭'
+  $('#proxyText').textContent = !p.enabled ? '网关已关闭'
     : (STATE.proxy_online ? `${(STATE.proxy_url||'').replace(/^https?:\/\//,'')} · ${STATE.proxy_latency_ms}ms`
-       : '分流入口未监听');
+       : '本地网关未监听');
   $('#proxyEnabled').checked = !!p.enabled;
   $('#mobileProxyEnabled').checked = !!p.enabled;
 
@@ -3216,9 +3216,9 @@ async function doLaunch(id, force=false){
     const hasInj = r.injected && r.injected.length;
     const injectDesc = r.kind==='firefox'
       ? (envCount ? `env + ${hasInj?r.injected.join(', '):'自定义配置'}`
-                  : `${hasInj?r.injected.join(', '):'独立配置'} · 代理注入已关闭`)
-      : (!envCount ? '（无，代理注入已关闭）' : (hasInj ? 'env + '+r.injected.join(', ') : 'env only'));
-    const lines = [{msg:`启动 ${r.app} [${r.kind}] · 注入 ${injectDesc}`, type:'ok'}];
+                  : `${hasInj?r.injected.join(', '):'独立配置'} · 应用网关已关闭`)
+      : (!envCount ? '（无，应用网关已关闭）' : (hasInj ? 'env + '+r.injected.join(', ') : 'env only'));
+    const lines = [{msg:`启动 ${r.app} [${r.kind}] · 网关 ${injectDesc}`, type:'ok'}];
     if(r.cmd) lines.push({msg:'  ' + r.cmd.join(' '), type:'dim'});
     if(r.firefox_prefs) lines.push({msg:'  PREF: ' + r.firefox_prefs, type:'dim'});
     logBatch(lines);
@@ -3234,14 +3234,14 @@ async function preview(id){
   const r = await api('/api/launch', {id, dry_run:true});
   if(!r.ok){ log('预览失败: '+(r.error||''), 'err'); toast(r.error||'预览失败', {type:'err'}); return; }
   const envEntries = r.env ? Object.entries(r.env) : [];
-  const envText = envEntries.length ? envEntries.map(([k,v]) => k+'='+v).join(' | ') : '（无，代理注入已关闭）';
+  const envText = envEntries.length ? envEntries.map(([k,v]) => k+'='+v).join(' | ') : '（无，应用网关已关闭）';
   const flagText = r.injected && r.injected.length
     ? r.injected.join(', ')
-    : (r.kind==='electron' ? '（无，代理注入已关闭或已手动指定）'
+    : (r.kind==='electron' ? '（无，应用网关已关闭或已手动指定）'
        : r.kind==='firefox' ? '（已自定义 -profile，未自动覆盖）'
        : '（无，普通应用只吃 env）');
   const lines = [
-    {msg:`预览 ${r.app} [${r.kind}]（未启动，代理 ${r.proxy_latency_ms}ms）`, type:'info'},
+    {msg:`预览 ${r.app} [${r.kind}]（未启动，网关 ${r.proxy_latency_ms}ms）`, type:'info'},
     {msg:'  CMD : '+r.cmd.join(' '), type:'dim'},
     {msg:'  ENV : '+envText, type:'dim'},
     {msg:'  FLAG: '+flagText, type:'dim'}
@@ -3667,14 +3667,14 @@ async function saveSettings(){
     const r = await api('/api/settings', body);
     if(!r.ok){
       toast(r.error||'保存设置失败', {type:'err'});
-      log('保存代理设置失败: '+(r.error||''), 'err');
+      log('保存网关设置失败: '+(r.error||''), 'err');
       return;
     }
     STATE = r.state; RULES_LOADED = false; render(); syncSettingsForms(true);
-    log(`代理设置已更新：${STATE.proxy_url}`, 'ok'); toast('代理设置已保存', {type:'ok'});
+    log(`网关设置已更新：${STATE.proxy_url}`, 'ok'); toast('网关设置已保存', {type:'ok'});
   }catch(e){
     toast('保存设置失败', {type:'err'});
-    log('保存代理设置失败: '+e, 'err');
+    log('保存网关设置失败: '+e, 'err');
   }
 }
 async function saveAdbSettings(){
@@ -3699,15 +3699,15 @@ async function toggleProxyEnabled(enabled, checkbox){
     if(!r.ok){
       checkbox.checked = !enabled;
       toast(r.error||'切换失败', {type:'err'});
-      log('切换代理注入失败: '+(r.error||''), 'err');
+      log('切换应用网关失败: '+(r.error||''), 'err');
       return;
     }
     STATE = r.state; render();
-    log('代理注入已'+(enabled?'开启':'关闭'), 'info');
+    log('应用网关已'+(enabled?'开启':'关闭'), 'info');
   }catch(err){
     checkbox.checked = !enabled;
     toast('切换失败', {type:'err'});
-    log('切换代理注入失败: '+err, 'err');
+    log('切换应用网关失败: '+err, 'err');
   }
 }
 async function quitService(){
@@ -3715,8 +3715,8 @@ async function quitService(){
   const yes = await askConfirm({
     title: '彻底退出 DroidBridge',
     body: hasRunning
-      ? '当前仍有应用运行中，彻底退出将关闭 127.0.0.1 分流代理并导致这些应用断网。确定退出？'
-      : '彻底退出后将停止本地分流服务与系统托盘图标。确定退出？',
+      ? '当前仍有应用运行中，彻底退出将关闭 127.0.0.1 本地分流网关并导致这些应用断网。确定退出？'
+      : '彻底退出后将停止本地分流网关与系统托盘图标。确定退出？',
     okText: '彻底退出', danger: true
   });
   if(!yes) return;
@@ -4054,7 +4054,7 @@ function renderPhoneUi(){
     }else{
       const devLabel = targetDevice ? `${targetDevice.model || targetDevice.serial}（${targetDevice.serial}）` : '已连接的 Android 设备';
       $('#phoneEmptyTitle').textContent = '准备就绪，随时连接手机屏幕';
-      $('#phoneEmptyDesc').textContent = `目标设备：${devLabel} · 支持鼠标触控、滚轮、中文输入与息屏操控。`;
+      $('#phoneEmptyDesc').textContent = `目标设备：${devLabel} · 支持电脑输入法直打中英文、独立小窗开应用、传文件与息屏操控。`;
       goSetBtn.hidden = true;
     }
     $('#phoneMetaSub').textContent = targetDevice
@@ -4206,7 +4206,7 @@ function renderPhoneAppsModal(){
         </div>
       </div>
       <div class="phone-app-actions">
-        <button type="button" class="btn tiny" data-mpin="${esc(a.package)}" data-mname="${esc(a.name)}">${isPinned ? '已钉住' : '钉到应用台'}</button>
+        <button type="button" class="btn tiny" data-mpin="${esc(a.package)}" data-mname="${esc(a.name)}">${isPinned ? '已固定' : '固定到应用台'}</button>
         <button type="button" class="btn tiny primary" data-mopen="${esc(a.package)}" data-mname="${esc(a.name)}" ${busy ? 'disabled' : ''}>${busy ? '启动中…' : '独立窗口'}</button>
       </div>
     </div>`;
@@ -4285,7 +4285,7 @@ async function togglePinPhoneApp(pkg, name, presetOverride){
     if(r.state) STATE = r.state;
     render();
     renderPhoneAppsModal();
-    toast(pinned ? `已取消固定 ${name || pkg}` : `已将 ${name || pkg} 钉到应用台`, {type:'ok'});
+    toast(pinned ? `已取消固定 ${name || pkg}` : `已将 ${name || pkg} 固定到应用台`, {type:'ok'});
   }catch(e){
     toast('操作失败', {type:'err'});
   }
@@ -4337,11 +4337,11 @@ function renderPhoneDeviceInfo(){
       clashBtn.disabled = !hasDevice;
       clashBtn.title = `在手机上一键打开 ${primary.label} (${primary.package})`;
     }else{
-      clashBtn.textContent = '打开 Clash';
+      clashBtn.textContent = '打开手机上游';
       clashBtn.dataset.pkg = '';
       clashBtn.dataset.label = '';
       clashBtn.disabled = true;
-      clashBtn.title = hasDevice ? '手机上未检测到常见 Clash / 代理应用' : '未检测到在线设备';
+      clashBtn.title = hasDevice ? '手机上未检测到常见代理客户端' : '未检测到在线设备';
     }
   }
 }
