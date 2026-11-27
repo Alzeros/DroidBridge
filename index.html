@@ -2697,7 +2697,7 @@ function renderConnections(){
   const since = ACTIVE_CONNS.stats_since || '';
 
   const idleApps = [...appStats.values()]
-    .filter(st => !activeKeys.has(st.key) && (st.tx > 0 || st.rx > 0 || st.conn_count > 0))
+    .filter(st => !activeKeys.has(st.key) && (st.tx > 0 || st.rx > 0 || (st.key !== '__unknown__' && st.conn_count > 0)))
     .filter(st => {
       if(CONN_FILTER !== 'all') return false;
       if(CONN_APP_FILTER !== 'all' && st.key !== CONN_APP_FILTER) return false;

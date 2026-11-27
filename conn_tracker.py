@@ -631,6 +631,24 @@ class ConnectionRegistry:
                 stat.last_seen_at = now_wall
                 stat.last_seen_time = time.strftime("%H:%M:%S", time.localtime(now_wall))
 
+    def resolve_owner(
+        self,
+        client_addr: tuple | None,
+        server_port: int,
+    ) -> tuple[int, str, str, list[dict]]:
+        """Resolve (pid, process_name, process_path, ancestors) while client socket is still open."""
+        try:
+            pid, proc_name, proc_path = self._owner_resolver(client_addr, server_port)
+        except Exception:
+            pid, proc_name, proc_path = 0, "", ""
+        ancestors: list[dict] = []
+        if pid > 0 and self._ancestor_resolver is not None:
+            try:
+                ancestors = list(self._ancestor_resolver(pid) or [])
+            except Exception:
+                ancestors = []
+        return int(pid or 0), str(proc_name or ""), str(proc_path or ""), ancestors
+
     def register(
         self,
         *,
@@ -643,17 +661,12 @@ class ConnectionRegistry:
         server_port: int,
         left_sock: socket.socket | None,
         right_sock: socket.socket | None,
+        owner_info: tuple[int, str, str, list[dict]] | None = None,
     ) -> ActiveConnection:
-        try:
-            pid, proc_name, proc_path = self._owner_resolver(client_addr, server_port)
-        except Exception:
-            pid, proc_name, proc_path = 0, "", ""
-        ancestors: list[dict] = []
-        if pid > 0 and self._ancestor_resolver is not None:
-            try:
-                ancestors = list(self._ancestor_resolver(pid) or [])
-            except Exception:
-                ancestors = []
+        if owner_info is not None:
+            pid, proc_name, proc_path, ancestors = owner_info
+        else:
+            pid, proc_name, proc_path, ancestors = self.resolve_owner(client_addr, server_port)
         client_str = (
             f"{client_addr[0]}:{client_addr[1]}"
             if client_addr and len(client_addr) >= 2
@@ -699,8 +712,27 @@ class ConnectionRegistry:
 
     def unregister(self, conn_id: str):
         with self._lock:
-            self._conns.pop(conn_id, None)
-            self._conn_proc_key.pop(conn_id, None)
+            conn = self._conns.pop(conn_id, None)
+            pk = self._conn_proc_key.pop(conn_id, None)
+            if (
+                conn is not None
+                and pk is not None
+                and conn.pid <= 0
+                and not conn.process
+                and not conn.process_path
+                and conn.tx_bytes == 0
+                and conn.rx_bytes == 0
+            ):
+                stat = self._proc_stats.get(pk)
+                if stat is not None:
+                    stat.conn_count = max(0, stat.conn_count - 1)
+                    if (
+                        stat.conn_count == 0
+                        and stat.tx_bytes == 0
+                        and stat.rx_bytes == 0
+                        and pk not in self._conn_proc_key.values()
+                    ):
+                        self._proc_stats.pop(pk, None)
 
     def count(self) -> int:
         with self._lock:

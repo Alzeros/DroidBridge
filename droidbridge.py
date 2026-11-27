@@ -2098,6 +2098,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         response_started = False
         upstream = None
         initial = b""
+        owner_info = _conn_registry.resolve_owner(self.client_address, self.server.server_address[1])
         try:
             table = self._table()
             if table is None:
@@ -2131,6 +2132,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 server_port=self.server.server_address[1],
                 left_sock=self.connection,
                 right_sock=upstream,
+                owner_info=owner_info,
             )
             try:
                 _relay_sockets(self.connection, upstream, initial, conn=conn)
@@ -2261,6 +2263,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         rule = ""
         response_started = False
         conn = None
+        owner_info = _conn_registry.resolve_owner(self.client_address, self.server.server_address[1])
         try:
             table = self._table()
             if table is None:
@@ -2285,6 +2288,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 server_port=self.server.server_address[1],
                 left_sock=self.connection,
                 right_sock=upstream,
+                owner_info=owner_info,
             )
             try:
                 upstream.sendall(request)

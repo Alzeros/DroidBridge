@@ -193,6 +193,72 @@ class ConnectionTrackerUnitTests(unittest.TestCase):
             [{"pid": 24724, "process": "Mirasim.exe", "process_path": r"C:\Apps\Mirasim.exe"}],
         )
 
+    def test_early_owner_info_and_zero_byte_anonymous_pruning(self):
+        # Simulate client socket closing during upstream handshake: early resolve finds chrome.exe, later returns empty
+        alive = {"open": True}
+
+        def _resolver(_addr, _port):
+            if alive["open"]:
+                return 8888, "chrome.exe", r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+            return 0, "", ""
+
+        reg = conn_tracker.ConnectionRegistry(owner_resolver=_resolver, ancestor_resolver=lambda _pid: [])
+        early_owner = reg.resolve_owner(("127.0.0.1", 55001), 10086)
+        alive["open"] = False
+
+        c_chrome = reg.register(
+            host="cdn.example.com",
+            port=443,
+            protocol="HTTPS",
+            action="PROXY",
+            rule="MATCH,,PROXY",
+            client_addr=("127.0.0.1", 55001),
+            server_port=10086,
+            left_sock=None,
+            right_sock=None,
+            owner_info=early_owner,
+        )
+        self.assertEqual(c_chrome.pid, 8888)
+        self.assertEqual(c_chrome.process, "chrome.exe")
+        reg.unregister(c_chrome.id)
+
+        # Zero-byte anonymous ghost connection is pruned from process_stats upon unregister
+        c_ghost = reg.register(
+            host="probe.example.com",
+            port=443,
+            protocol="HTTPS",
+            action="PROXY",
+            rule="MATCH,,PROXY",
+            client_addr=("127.0.0.1", 55002),
+            server_port=10086,
+            left_sock=None,
+            right_sock=None,
+        )
+        self.assertEqual(c_ghost.pid, 0)
+        self.assertEqual(c_ghost.process, "")
+        reg.unregister(c_ghost.id)
+        snap = reg.snapshot()
+        self.assertEqual([s["process"] for s in snap["process_stats"]], ["chrome.exe"])
+
+        # Unknown-process connection with real traffic IS kept in process_stats
+        c_real_unknown = reg.register(
+            host="real.example.com",
+            port=443,
+            protocol="HTTPS",
+            action="PROXY",
+            rule="MATCH,,PROXY",
+            client_addr=("127.0.0.1", 55003),
+            server_port=10086,
+            left_sock=None,
+            right_sock=None,
+        )
+        c_real_unknown.add_rx(512)
+        reg.unregister(c_real_unknown.id)
+        snap2 = reg.snapshot()
+        anon_rows = [s for s in snap2["process_stats"] if not s["process"]]
+        self.assertEqual(len(anon_rows), 1)
+        self.assertEqual(anon_rows[0]["rx_bytes"], 512)
+
     @unittest.skipUnless(os.name == "nt", "Windows Toolhelp32 ancestor lookup")
     def test_windows_resolve_process_ancestors_finds_parent_of_current_process(self):
         anc = conn_tracker.resolve_process_ancestors(os.getpid())
