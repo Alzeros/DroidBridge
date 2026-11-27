@@ -90,7 +90,7 @@ class ScrcpyBinaryAndProtocolTests(unittest.TestCase):
         self.assertIn("max_fps=60", joined)
         self.assertIn("audio=false", joined)
         self.assertIn("tunnel_forward=true", joined)
-        self.assertIn("clipboard_autosync=false", joined)
+        self.assertNotIn("clipboard_autosync=false", joined)
 
         cmd_720 = scrcpy_bridge.build_server_cmd(0x12, quality="720", max_fps=30)
         self.assertIn("max_size=720", " ".join(cmd_720))
@@ -105,6 +105,55 @@ class ScrcpyBinaryAndProtocolTests(unittest.TestCase):
             proc_args = scrcpy_bridge.build_server_cmd(0x7FFFFFFE, quality=quality, max_fps=fps)[2:]
             cmdline_len = len(" ".join(proc_args))
             self.assertLess(cmdline_len, 220, f"cmdline too long for Samsung ACodec: {cmdline_len}")
+
+        # Virtual display mode omits stay_awake/max_size, sets display_ime_policy=local, and never puts start_app in CLI
+        vd_cmd = scrcpy_bridge.build_server_cmd(
+            0x7FFFFFFE,
+            max_fps=60,
+            new_display="720x1280/280",
+            start_app="com.example.very.long.enterprise.application.package.identifier",
+        )
+        vd_joined = " ".join(vd_cmd)
+        self.assertIn("new_display=720x1280/280", vd_joined)
+        self.assertIn("display_ime_policy=local", vd_joined)
+        self.assertNotIn("start_app=", vd_joined)
+        self.assertNotIn("stay_awake=true", vd_joined)
+        self.assertNotIn("max_size=", vd_joined)
+        self.assertLess(len(" ".join(vd_cmd[2:])), 220)
+
+        vd_hide = scrcpy_bridge.build_server_cmd(
+            0x7FFFFFFE,
+            max_fps=60,
+            new_display="960x600/200",
+            ime_policy="hide",
+        )
+        self.assertIn("display_ime_policy=hide", " ".join(vd_hide))
+        self.assertEqual(scrcpy_bridge.validate_new_display("965x603/200"), "960x600/200")
+        with self.assertRaises(scrcpy_bridge.ScrcpyError):
+            scrcpy_bridge.validate_new_display("100x100/160")
+
+        start_app_pkt = scrcpy_bridge.pack_start_app("com.follow.clash")
+        self.assertEqual(start_app_pkt, struct.pack(">BB", 16, len("com.follow.clash")) + b"com.follow.clash")
+        self.assertEqual(
+            scrcpy_bridge.encode_control_command({"type": "start_app", "package": "com.follow.clash"}),
+            [start_app_pkt],
+        )
+
+        apps = scrcpy_bridge.parse_scrcpy_apps_output(
+            "[server] INFO: List of apps:\n"
+            " * 三星浏览器   com.sec.android.app.sbrowser\n"
+            " - FlClash     com.follow.clash\n"
+            " - 微信         com.tencent.mm\n"
+            " - FlClash     com.follow.clash\n"
+        )
+        self.assertEqual(
+            apps,
+            [
+                {"name": "FlClash", "package": "com.follow.clash", "system": False},
+                {"name": "微信", "package": "com.tencent.mm", "system": False},
+                {"name": "三星浏览器", "package": "com.sec.android.app.sbrowser", "system": True},
+            ],
+        )
 
     def test_parse_device_video_and_frame_headers(self):
         raw_name = "SM-G9730".encode("utf-8").ljust(64, b"\x00")
@@ -159,6 +208,7 @@ class ScrcpyBinaryAndProtocolTests(unittest.TestCase):
 
         self.assertEqual(scrcpy_bridge.pack_set_display_power(False), b"\x0a\x00")
         self.assertEqual(scrcpy_bridge.pack_set_display_power(True), b"\x0a\x01")
+        self.assertEqual(scrcpy_bridge.pack_get_clipboard(0), b"\x08\x00")
         self.assertEqual(scrcpy_bridge.pack_simple_action(scrcpy_bridge.TYPE_RESET_VIDEO), b"\x11")
         self.assertEqual(scrcpy_bridge.pack_simple_action(scrcpy_bridge.TYPE_ROTATE_DEVICE), b"\x0b")
 
@@ -171,10 +221,69 @@ class ScrcpyBinaryAndProtocolTests(unittest.TestCase):
         back_pkts = scrcpy_bridge.encode_control_command({"type": "action", "name": "back_or_screen_on"})
         self.assertEqual(back_pkts, [b"\x04\x00", b"\x04\x01"])
 
+        pinch_pkt = scrcpy_bridge.encode_control_command(
+            {"type": "touch", "action": "down", "pointer_id": 100, "x": 120, "y": 240, "width": 512, "height": 1080}
+        )
+        self.assertEqual(struct.unpack(">BBqiiHHHii", pinch_pkt[0])[2], 100)
+
+        get_clip_pkt = scrcpy_bridge.encode_control_command({"type": "get_clipboard"})
+        self.assertEqual(get_clip_pkt, [b"\x08\x00"])
+
         with self.assertRaises(ValueError):
             scrcpy_bridge.encode_control_command({"type": "touch", "action": "down", "x": 10, "y": 10, "width": 0, "height": 100})
         with self.assertRaises(ValueError):
             scrcpy_bridge.encode_control_command({"type": "unknown_cmd"})
+
+    def test_device_info_parser_filename_sanitizer_and_adb_helpers(self):
+        sample = "\n".join([
+            "===BAT===",
+            "  AC powered: true",
+            "  USB powered: false",
+            "  status: 4",
+            "  level: 84",
+            "  temperature: 226",
+            "===NET===",
+            "1: lo    inet 127.0.0.1/8 scope host lo",
+            "9: wlan0    inet 172.20.10.4/28 brd 172.20.10.15 scope global wlan0",
+            "===PKG===",
+            "package:com.android.settings",
+            "package:com.follow.clash",
+        ])
+        parsed = scrcpy_bridge.parse_device_info_output(sample)
+        self.assertEqual(parsed["battery"]["level"], 84)
+        self.assertEqual(parsed["battery"]["temp_c"], 22.6)
+        self.assertTrue(parsed["battery"]["plugged"])
+        self.assertFalse(parsed["battery"]["charging"])
+        self.assertEqual(parsed["network"]["type"], "Wi-Fi")
+        self.assertEqual(parsed["network"]["ip"], "172.20.10.4")
+        self.assertEqual(parsed["proxy_apps"], [{"package": "com.follow.clash", "label": "FlClash"}])
+
+        self.assertEqual(scrcpy_bridge.sanitize_upload_filename("../../bad;name$(x).apk"), "bad_name__x_.apk")
+        self.assertEqual(scrcpy_bridge.sanitize_upload_filename("  "), "upload.bin")
+
+        fake_adb = _FakeAdbTool(forward_port=55555)
+        fake_adb.shell_outputs = {
+            "resolve-activity": (0, "priority=0\ncom.follow.clash/.MainActivity\n", ""),
+            "am": (0, "Starting: Intent { cmp=com.follow.clash/.MainActivity }\n", ""),
+        }
+        launched = scrcpy_bridge.launch_device_app(fake_adb, "com.follow.clash")
+        self.assertTrue(launched["ok"])
+        self.assertEqual(launched["component"], "com.follow.clash/.MainActivity")
+        with self.assertRaises(scrcpy_bridge.ScrcpyError):
+            scrcpy_bridge.launch_device_app(fake_adb, "bad;rm -rf /")
+
+        with tempfile.TemporaryDirectory() as td:
+            f_txt = Path(td) / "hello.txt"
+            f_txt.write_text("hi", encoding="utf-8")
+            pushed = scrcpy_bridge.push_or_install_file(fake_adb, f_txt, "hello.txt")
+            self.assertEqual(pushed["mode"], "push")
+            self.assertEqual(pushed["remote_path"], "/sdcard/Download/hello.txt")
+
+            f_apk = Path(td) / "demo.apk"
+            f_apk.write_bytes(b"PK\x03\x04fakeapk")
+            installed = scrcpy_bridge.push_or_install_file(fake_adb, f_apk, "demo.apk")
+            self.assertEqual(installed["mode"], "install")
+            self.assertTrue(any("install" in call and "-r" in call for call in fake_adb.calls))
 
 
 class WebSocketTests(unittest.TestCase):
@@ -287,11 +396,17 @@ class _FakeAdbTool:
             raise RuntimeError(f"指定设备 {serial} 未在线")
         return {"serial": self.serial, "state": "device", "model": "FakePhone"}
 
-    def run(self, args):
+    def run(self, args, timeout=None):
         args = list(args)
         self.calls.append(args)
+        if "install" in args:
+            return 0, "Success\n", ""
         if "push" in args:
             return 0, "1 file pushed", ""
+        if "resolve-activity" in args:
+            return getattr(self, "shell_outputs", {}).get("resolve-activity", (0, "com.follow.clash/.MainActivity\n", ""))
+        if "am" in args:
+            return getattr(self, "shell_outputs", {}).get("am", (0, "Starting: Intent\n", ""))
         if "forward" in args and "--remove" in args:
             local = args[-1]
             self.forwards.pop(local, None)
@@ -383,6 +498,10 @@ class PhoneMirrorManagerLifecycleTests(unittest.TestCase):
                         # If client sent TYPE_RESET_VIDEO (0x11), emit another keyframe
                         if b"\x11" in chunk:
                             video_sock.sendall(struct.pack(">QI", scrcpy_bridge.PACKET_FLAG_KEY_FRAME | 2000, len(idr)) + idr)
+                        # If client sent TYPE_GET_CLIPBOARD (0x08 0x00), reply with DEVICE_MSG_CLIPBOARD
+                        if b"\x08\x00" in chunk:
+                            clip_raw = "手机验证码9527".encode("utf-8")
+                            control_sock.sendall(struct.pack(">BI", scrcpy_bridge.DEVICE_MSG_CLIPBOARD, len(clip_raw)) + clip_raw)
                     except socket.timeout:
                         continue
             except OSError:
@@ -456,10 +575,21 @@ class PhoneMirrorManagerLifecycleTests(unittest.TestCase):
             self.assertGreaterEqual(len(got_video), 1)
             self.assertEqual(got_video[0][0], scrcpy_bridge.WS_VIDEO_TYPE)
 
-            # Pause then resume should trigger TYPE_RESET_VIDEO (0x11)
+            # Pause then resume should trigger TYPE_RESET_VIDEO (0x11), and get_clipboard should broadcast device clipboard
             ws_client.sendall(_mask_ws_frame(0x1, json.dumps({"type": "pause", "paused": True}).encode("utf-8")))
             ws_client.sendall(_mask_ws_frame(0x1, json.dumps({"type": "pause", "paused": False}).encode("utf-8")))
             ws_client.sendall(_mask_ws_frame(0x1, json.dumps({"type": "clipboard", "text": "中文测试", "paste": True}).encode("utf-8")))
+            ws_client.sendall(_mask_ws_frame(0x1, json.dumps({"type": "get_clipboard"}).encode("utf-8")))
+            got_clip = None
+            clip_deadline = time.time() + 3.0
+            while time.time() < clip_deadline and got_clip is None:
+                fin, op, payload = _read_server_ws_frame(ws_client)
+                if op == 0x1:
+                    msg = json.loads(payload.decode("utf-8"))
+                    if msg.get("type") == "clipboard":
+                        got_clip = msg
+            self.assertIsNotNone(got_clip)
+            self.assertEqual(got_clip["text"], "手机验证码9527")
             ws_client.sendall(_mask_ws_frame(0x8, struct.pack("!H", 1000)))
             ws_thread.join(timeout=3)
             ws_client.close()
@@ -500,6 +630,89 @@ class PhoneMirrorManagerLifecycleTests(unittest.TestCase):
         # Temp forward must be cleaned up, proxy forward preserved
         self.assertNotIn(f"tcp:{dead_port}", fake_adb.forwards)
         self.assertEqual(fake_adb.forwards.get("tcp:5038"), "tcp:5038")
+
+    def test_multi_session_virtual_display_and_idle_grace_cleanup(self):
+        p_main, _ctrl1, stop1, _ = self._start_fake_scrcpy_server()
+        p_vd, _ctrl2, stop2, _ = self._start_fake_scrcpy_server()
+        ports = iter([p_main, p_vd])
+
+        class _MultiPortAdb(_FakeAdbTool):
+            def run(self, args, timeout=None):
+                args = list(args)
+                self.calls.append(args)
+                if "forward" in args and "tcp:0" in args:
+                    p = next(ports)
+                    self.forwards[f"tcp:{p}"] = args[-1]
+                    return 0, f"{p}\n", ""
+                return super().run(args, timeout=timeout)
+
+        fake_adb = _MultiPortAdb(forward_port=p_main)
+        procs = [_FakeProc(), _FakeProc()]
+        proc_iter = iter(procs)
+        manager = scrcpy_bridge.PhoneMirrorManager(
+            adb_factory=lambda _cfg: fake_adb,
+            popen_fn=lambda *a, **kw: next(proc_iter),
+            virtual_idle_grace=0.15,
+        )
+        try:
+            st_main = manager.start({}, quality="1080", max_fps=60)
+            sid = scrcpy_bridge.session_id_for_package("com.follow.clash")
+            st_vd = manager.start(
+                {},
+                max_fps=60,
+                session_id=sid,
+                new_display="720x1280/280",
+                start_app="com.follow.clash",
+                app_name="FlClash",
+                preset="phone",
+            )
+            self.assertTrue(st_main["running"])
+            self.assertTrue(st_vd["running"])
+            self.assertTrue(st_vd["is_virtual"])
+            self.assertEqual(st_vd["package"], "com.follow.clash")
+            self.assertEqual(len(manager.list_sessions()), 2)
+
+            # Virtual session MUST have sent TYPE_START_APP (16) over the control socket
+            deadline = time.time() + 2.0
+            expected_start = scrcpy_bridge.pack_start_app("com.follow.clash")
+            while time.time() < deadline and expected_start not in b"".join(_ctrl2):
+                time.sleep(0.03)
+            self.assertIn(expected_start, b"".join(_ctrl2))
+
+            # Stopping main leaves virtual session running
+            manager.stop("main")
+            self.assertFalse(manager.status("main")["running"])
+            self.assertTrue(manager.status(sid)["running"])
+
+            # Attach and disconnect a WS client on the virtual session -> grace timer stops it cleanly
+            srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            srv.bind(("127.0.0.1", 0))
+            srv.listen(1)
+            ws_client = socket.create_connection(("127.0.0.1", srv.getsockname()[1]), timeout=3)
+            ws_server_sock, _ = srv.accept()
+            srv.close()
+            t = threading.Thread(
+                target=manager.handle_websocket,
+                args=(scrcpy_bridge.WebSocketConn(ws_server_sock), sid),
+                daemon=True,
+            )
+            t.start()
+            ws_client.settimeout(3)
+            _read_server_ws_frame(ws_client)
+            ws_client.sendall(_mask_ws_frame(0x8, struct.pack("!H", 1000)))
+            t.join(timeout=2)
+            ws_client.close()
+
+            deadline = time.time() + 2.0
+            while time.time() < deadline and manager.status(sid)["running"]:
+                time.sleep(0.05)
+            self.assertFalse(manager.status(sid)["running"])
+            self.assertEqual(fake_adb.forwards.get("tcp:5038"), "tcp:5038")
+            self.assertNotIn(f"tcp:{p_vd}", fake_adb.forwards)
+        finally:
+            stop1.set()
+            stop2.set()
+            manager.shutdown()
 
 
 class DroidBridgePhoneEndpointTests(unittest.TestCase):
@@ -544,6 +757,31 @@ class DroidBridgePhoneEndpointTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertFalse(payload["running"])
         self.assertTrue(payload["server_ready"])
+
+        # Upload endpoint requires auth token and rejects empty payload
+        import urllib.error
+
+        bad_up = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/phone/upload?name=test.txt",
+            data=b"abc",
+            headers={"X-DroidBridge-Token": "wrong", "Origin": f"http://127.0.0.1:{self.port}"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as err_ctx:
+            opener.open(bad_up, timeout=3)
+        self.assertEqual(err_ctx.exception.code, 403)
+        err_ctx.exception.close()
+
+        empty_up = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/phone/upload?name=test.txt",
+            data=b"",
+            headers={"X-DroidBridge-Token": self.db.API_TOKEN, "Origin": f"http://127.0.0.1:{self.port}"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as err_ctx:
+            opener.open(empty_up, timeout=3)
+        self.assertEqual(err_ctx.exception.code, 400)
+        err_ctx.exception.close()
 
         # WebSocket with bad token must be rejected with 403
         key = base64.b64encode(os.urandom(16)).decode("ascii")
@@ -616,6 +854,133 @@ class DroidBridgePhoneEndpointTests(unittest.TestCase):
             sock.sendall(_mask_ws_frame(0x8, struct.pack("!H", 1000)))
         finally:
             sock.close()
+
+
+        # Invalid resize params return 400; valid returns 200
+        bad_resize = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/phone/window/resize",
+            data=json.dumps({"session": "app_com_follow_clash", "width": 100, "height": 100}).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "X-DroidBridge-Token": self.db.API_TOKEN,
+                "Origin": f"http://127.0.0.1:{self.port}",
+            },
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as err_ctx:
+            opener.open(bad_resize, timeout=3)
+        self.assertEqual(err_ctx.exception.code, 400)
+        err_ctx.exception.close()
+
+        good_resize = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/api/phone/window/resize",
+            data=json.dumps({"session": "app_com_follow_clash", "width": 990, "height": 691, "name": "FlClash"}).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "X-DroidBridge-Token": self.db.API_TOKEN,
+                "Origin": f"http://127.0.0.1:{self.port}",
+            },
+            method="POST",
+        )
+        with opener.open(good_resize, timeout=3) as resp:
+            rz = json.loads(resp.read().decode("utf-8"))
+        self.assertTrue(rz["ok"])
+        self.assertEqual((rz["width"], rz["height"]), (990, 691))
+
+    def test_tablet_hd_preset_and_resize_window_by_title_clamping(self):
+        import ctypes
+
+        self.assertEqual(scrcpy_bridge.normalize_vd_preset("phone"), "phone")
+        self.assertEqual(scrcpy_bridge.VD_PRESETS["phone"]["new_display"], "480x856/213")
+        self.assertEqual(scrcpy_bridge.normalize_vd_preset("tablet"), "tablet")
+        self.assertEqual(scrcpy_bridge.VD_PRESETS["tablet"]["new_display"], "960x600/200")
+        self.assertEqual(scrcpy_bridge.normalize_vd_preset("tablet_hd"), "tablet_hd")
+        self.assertEqual(scrcpy_bridge.VD_PRESETS["tablet_hd"]["new_display"], "1280x720/240")
+        self.assertEqual(scrcpy_bridge.normalize_vd_preset("tablet_fhd"), "tablet_fhd")
+        self.assertEqual(scrcpy_bridge.VD_PRESETS["tablet_fhd"]["new_display"], "1600x900/280")
+        self.assertEqual(scrcpy_bridge.normalize_ime_policy("hide"), "hide")
+
+        if os.name != "nt":
+            return
+
+        class _FakeFn:
+            def __init__(self, impl):
+                self._impl = impl
+                self.argtypes = None
+                self.restype = None
+
+            def __call__(self, *args):
+                return self._impl(*args)
+
+        class _FakeUser32:
+            def __init__(self, *, zoomed=False, rect=(1100, 500, 1860, 1260)):
+                self.zoomed = zoomed
+                self.rect = rect
+                self.shown = []
+                self.pos_calls = []
+                self.EnumWindows = _FakeFn(self._enum_windows)
+                self.IsWindowVisible = _FakeFn(lambda h: h == 42)
+                self.GetWindowTextLengthW = _FakeFn(lambda h: len("Qoder CN · DroidBridge 手机应用"))
+                self.GetWindowTextW = _FakeFn(self._get_text)
+                self.IsIconic = _FakeFn(lambda h: False)
+                self.IsZoomed = _FakeFn(lambda h: self.zoomed)
+                self.ShowWindow = _FakeFn(lambda h, cmd: self.shown.append((h, cmd)) or True)
+                self.GetDpiForSystem = _FakeFn(lambda: 96)
+                self.MonitorFromWindow = _FakeFn(lambda h, fl: 7)
+                self.GetMonitorInfoW = _FakeFn(self._get_mon)
+                self.GetWindowRect = _FakeFn(self._get_rect)
+                self.SetWindowPos = _FakeFn(self._set_pos)
+
+            def _enum_windows(self, cb, lp):
+                cb(42, lp)
+                return True
+
+            def _get_text(self, _h, buf, _n):
+                text = "Qoder CN · DroidBridge 手机应用"
+                buf.value = text
+                return len(text)
+
+            def _get_mon(self, _hm, ptr):
+                mi = ptr._obj
+                mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom = 0, 0, 1920, 1040
+                return True
+
+            def _get_rect(self, _h, ptr):
+                r = ptr._obj
+                r.left, r.top, r.right, r.bottom = self.rect
+                return True
+
+            def _set_pos(self, h, _after, x, y, w, hgt, flags):
+                self.pos_calls.append((h, x, y, w, hgt, flags))
+                return True
+
+        fake = _FakeUser32()
+        ok = self.db.resize_window_by_title("Qoder CN · DroidBridge 手机应用", 990, 691, user32=fake)
+        self.assertTrue(ok)
+        self.assertEqual(len(fake.pos_calls), 1)
+        _h, x, y, w, hgt, _fl = fake.pos_calls[0]
+        self.assertEqual((w, hgt), (990, 691))
+        self.assertLessEqual(x + w, 1920)
+        self.assertLessEqual(y + hgt, 1040)
+
+        # Oversized request gets clamped within monitor work area
+        fake2 = _FakeUser32(rect=(100, 100, 800, 800))
+        self.assertTrue(self.db.resize_window_by_title("Qoder CN · DroidBridge 手机应用", 2400, 1600, user32=fake2))
+        _, _, _, w2, h2, _ = fake2.pos_calls[0]
+        self.assertLessEqual(w2, int(1920 * 0.94))
+        self.assertLessEqual(h2, int(1040 * 0.94))
+
+        # Maximized window is left alone unless restore_maximized=True
+        fake_max = _FakeUser32(zoomed=True)
+        self.assertFalse(self.db.resize_window_by_title("Qoder CN · DroidBridge 手机应用", 990, 691, user32=fake_max))
+        self.assertEqual(fake_max.pos_calls, [])
+        self.assertTrue(
+            self.db.resize_window_by_title(
+                "Qoder CN · DroidBridge 手机应用", 990, 691, restore_maximized=True, user32=fake_max
+            )
+        )
+        self.assertEqual(fake_max.shown, [(42, 9)])
+        self.assertEqual(len(fake_max.pos_calls), 1)
 
 
 if __name__ == "__main__":

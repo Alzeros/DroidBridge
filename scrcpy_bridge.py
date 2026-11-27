@@ -14,6 +14,7 @@ import base64
 import collections
 import hashlib
 import json
+import re
 import secrets
 import socket
 import struct
@@ -22,6 +23,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Callable
+from urllib.parse import quote as _url_quote
 
 ROOT = Path(__file__).resolve().parent
 SCRCPY_SERVER_VERSION = "3.3.4"
@@ -53,6 +55,7 @@ TYPE_GET_CLIPBOARD = 8
 TYPE_SET_CLIPBOARD = 9
 TYPE_SET_DISPLAY_POWER = 10
 TYPE_ROTATE_DEVICE = 11
+TYPE_START_APP = 16
 TYPE_RESET_VIDEO = 17
 
 # scrcpy v3.3.4 DeviceMessage types (verified against DeviceMessageWriter.java)
@@ -76,6 +79,20 @@ QUALITY_PRESETS: dict[str, tuple[int, int]] = {
 }
 ALLOWED_MAX_FPS = (30, 60)
 
+VD_PRESETS: dict[str, dict] = {
+    "phone": {"new_display": "480x856/213", "win_w": 510, "win_h": 947, "label": "竖屏小窗 480×856"},
+    "phone_hd": {"new_display": "720x1280/320", "win_w": 500, "win_h": 930, "label": "竖屏高清 720×1280"},
+    "tablet": {"new_display": "960x600/200", "win_w": 990, "win_h": 691, "label": "横屏适中 960×600"},
+    "tablet_hd": {"new_display": "1280x720/240", "win_w": 1310, "win_h": 811, "label": "横屏高清 1280×720"},
+    "tablet_fhd": {"new_display": "1600x900/280", "win_w": 1630, "win_h": 991, "label": "横屏大屏 1600×900"},
+}
+ALLOWED_IME_POLICIES = ("local", "hide", "fallback")
+_NEW_DISPLAY_RE = re.compile(r"^(\d{3,4})x(\d{3,4})(?:/(\d{2,3}))?$")
+_APP_LINE_RE = re.compile(r"^\s*([*-])\s+(.+?)\s+([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)\s*$")
+_APPS_CACHE_TTL = 60.0
+_apps_cache_lock = threading.Lock()
+_apps_cache: dict[str, tuple[float, list[dict]]] = {}
+
 SIMPLE_ACTION_MAP = {
     "expand_notifications": TYPE_EXPAND_NOTIFICATION_PANEL,
     "expand_settings": TYPE_EXPAND_SETTINGS_PANEL,
@@ -83,6 +100,23 @@ SIMPLE_ACTION_MAP = {
     "rotate": TYPE_ROTATE_DEVICE,
     "reset_video": TYPE_RESET_VIDEO,
 }
+
+KNOWN_PROXY_APPS: tuple[tuple[str, str], ...] = (
+    ("com.follow.clash", "FlClash"),
+    ("com.github.metacubex.clash.meta", "Clash Meta"),
+    ("com.github.kr328.clash.foss", "Clash for Android"),
+    ("com.github.kr328.clash", "Clash for Android"),
+    ("io.nekohasekai.sfa", "sing-box"),
+    ("moe.nb4a", "NekoBox"),
+    ("com.v2ray.ang", "v2rayNG"),
+    ("com.getsurfboard", "Surfboard"),
+    ("com.karing.app", "Karing"),
+    ("app.hiddify.com", "Hiddify"),
+)
+
+_PACKAGE_RE = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$")
+_COMPONENT_RE = re.compile(r"^[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+$")
+_FILENAME_BAD_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f;`$()&!]')
 
 
 class ScrcpyError(Exception):
@@ -164,7 +198,57 @@ def normalize_max_fps(max_fps: int | str | None) -> int:
     return fps
 
 
-def build_server_cmd(scid: int, quality: str = "1080", max_fps: int = 60) -> list[str]:
+def normalize_vd_preset(preset: str | None) -> str:
+    value = str(preset or "phone").strip().lower()
+    if value not in VD_PRESETS:
+        raise ScrcpyError(
+            f"不支持的虚拟屏规格：{value}（可选 phone / phone_hd / tablet / tablet_hd / tablet_fhd）"
+        )
+    return value
+
+
+def normalize_ime_policy(policy: str | None, default: str = "local") -> str:
+    value = str(policy or default).strip().lower()
+    if value not in ALLOWED_IME_POLICIES:
+        raise ScrcpyError(f"不支持的虚拟屏输入法策略：{value}（可选 local / hide / fallback）")
+    return value
+
+
+def validate_new_display(spec: str) -> str:
+    raw = str(spec or "").strip()
+    m = _NEW_DISPLAY_RE.match(raw)
+    if not m:
+        raise ScrcpyError(f"无效的虚拟屏幕尺寸参数：{raw}")
+    w = int(m.group(1))
+    h = int(m.group(2))
+    dpi = int(m.group(3)) if m.group(3) else 0
+    if not (320 <= w <= 2560 and 320 <= h <= 2560):
+        raise ScrcpyError(f"虚拟屏幕宽高需在 320~2560 之间：{w}x{h}")
+    w = max(320, min(2560, (w // 8) * 8))
+    h = max(320, min(2560, (h // 8) * 8))
+    if dpi:
+        dpi = max(120, min(560, dpi))
+        return f"{w}x{h}/{dpi}"
+    return f"{w}x{h}"
+
+
+def session_id_for_package(package: str) -> str:
+    pkg = str(package or "").strip()
+    if not _PACKAGE_RE.match(pkg):
+        raise ScrcpyError(f"无效的 Android 应用包名：{pkg}")
+    return "app_" + re.sub(r"[^A-Za-z0-9_]", "_", pkg)
+
+
+def build_server_cmd(
+    scid: int,
+    quality: str = "1080",
+    max_fps: int = 60,
+    *,
+    remote_path: str = SCRCPY_REMOTE_PATH,
+    new_display: str = "",
+    start_app: str = "",
+    ime_policy: str = "local",
+) -> list[str]:
     """Build minimal non-default scrcpy v3.3.4 server args.
 
     Keep /proc/self/cmdline compact (<220 bytes): Samsung Android 12 libstagefright
@@ -177,9 +261,17 @@ def build_server_cmd(scid: int, quality: str = "1080", max_fps: int = 60) -> lis
     max_size, bitrate = QUALITY_PRESETS[q]
     if not (0 <= scid <= 0x7FFFFFFF):
         raise ScrcpyError("scid 超出 31 位无符号整数范围")
+
+    vd = str(new_display or "").strip()
+    pkg = str(start_app or "").strip()
+    if vd and not _NEW_DISPLAY_RE.match(vd):
+        raise ScrcpyError(f"无效的虚拟屏幕尺寸参数：{vd}")
+    if pkg and not _PACKAGE_RE.match(pkg):
+        raise ScrcpyError(f"无效的 Android 应用包名：{pkg}")
+
     cmd = [
         "shell",
-        f"CLASSPATH={SCRCPY_REMOTE_PATH}",
+        f"CLASSPATH={remote_path}",
         "app_process",
         "/",
         "com.genymobile.scrcpy.Server",
@@ -188,14 +280,18 @@ def build_server_cmd(scid: int, quality: str = "1080", max_fps: int = 60) -> lis
         "log_level=warn",
         "audio=false",
         "tunnel_forward=true",
-        "stay_awake=true",
-        "clipboard_autosync=false",
         f"max_fps={fps}",
     ]
-    if max_size > 0:
-        cmd.append(f"max_size={max_size}")
-    if bitrate != 8_000_000:
-        cmd.append(f"video_bit_rate={bitrate}")
+    if vd:
+        pol = normalize_ime_policy(ime_policy, default="local")
+        cmd.append(f"new_display={vd}")
+        cmd.append(f"display_ime_policy={pol}")
+    else:
+        cmd.append("stay_awake=true")
+        if max_size > 0:
+            cmd.append(f"max_size={max_size}")
+        if bitrate != 8_000_000:
+            cmd.append(f"video_bit_rate={bitrate}")
     return cmd
 
 
@@ -319,6 +415,13 @@ def pack_back_or_screen_on(action: int) -> bytes:
     return struct.pack(">BB", TYPE_BACK_OR_SCREEN_ON, action)
 
 
+def pack_get_clipboard(copy_key: int = 0) -> bytes:
+    ck = int(copy_key)
+    if ck not in (0, 1, 2):
+        raise ValueError("invalid copy_key")
+    return struct.pack(">BB", TYPE_GET_CLIPBOARD, ck)
+
+
 def pack_set_clipboard(sequence: int, text: str, paste: bool) -> bytes:
     raw = str(text).encode("utf-8")
     if len(raw) > CLIPBOARD_TEXT_MAX_BYTES:
@@ -328,6 +431,14 @@ def pack_set_clipboard(sequence: int, text: str, paste: bool) -> bytes:
 
 def pack_set_display_power(on: bool) -> bytes:
     return struct.pack(">BB", TYPE_SET_DISPLAY_POWER, 1 if on else 0)
+
+
+def pack_start_app(app_spec: str) -> bytes:
+    """Encode scrcpy v3.3.4 TYPE_START_APP (16): 1B type + 1B length + UTF-8 app/package."""
+    raw = str(app_spec or "").strip().encode("utf-8")
+    if not raw or len(raw) > 255:
+        raise ValueError("start_app name must be 1..255 UTF-8 bytes")
+    return struct.pack(">BB", TYPE_START_APP, len(raw)) + raw
 
 
 def pack_simple_action(msg_type: int) -> bytes:
@@ -347,6 +458,10 @@ def encode_control_command(
         act_name = str(cmd.get("action") or "").strip().lower()
         if act_name not in act_map:
             raise ValueError(f"invalid touch action: {act_name}")
+        raw_pid = cmd.get("pointer_id", POINTER_ID_GENERIC_FINGER)
+        if isinstance(raw_pid, bool):
+            raise ValueError("invalid pointer_id")
+        pointer_id = int(raw_pid)
         return [
             pack_inject_touch(
                 act_map[act_name],
@@ -354,6 +469,7 @@ def encode_control_command(
                 cmd.get("y", 0),
                 cmd.get("width", 0),
                 cmd.get("height", 0),
+                pointer_id=pointer_id,
             )
         ]
 
@@ -392,6 +508,9 @@ def encode_control_command(
             raise ValueError("text cannot be empty")
         return [pack_inject_text(text)]
 
+    if kind == "get_clipboard":
+        return [pack_get_clipboard(int(cmd.get("copy_key", 0)))]
+
     if kind == "clipboard":
         text = str(cmd.get("text") or "")
         if not text:
@@ -402,6 +521,12 @@ def encode_control_command(
 
     if kind == "display_power":
         return [pack_set_display_power(bool(cmd.get("on", True)))]
+
+    if kind == "start_app":
+        pkg = str(cmd.get("package") or cmd.get("name") or "").strip()
+        if not pkg:
+            raise ValueError("start_app package cannot be empty")
+        return [pack_start_app(pkg)]
 
     if kind == "action":
         name = str(cmd.get("name") or "").strip().lower()
@@ -760,19 +885,37 @@ class ScrcpySession:
         handshake_timeout: float,
         on_video_packet: Callable[[bool, bool, bytes], None],
         on_terminated: Callable[["ScrcpySession", str], None],
+        on_device_clipboard: Callable[[str], None] | None = None,
+        on_ack_clipboard: Callable[[int], None] | None = None,
+        *,
+        session_id: str = "main",
+        new_display: str = "",
+        start_app: str = "",
+        app_name: str = "",
+        preset: str = "",
+        ime_policy: str = "local",
     ):
         self.adb = adb
         self.serial = serial
+        self.session_id = str(session_id or "main")
         self.quality = normalize_quality(quality)
         self.max_fps = normalize_max_fps(max_fps)
+        self.new_display = str(new_display or "").strip()
+        self.start_app = str(start_app or "").strip()
+        self.app_name = str(app_name or "").strip() or self.start_app
+        self.preset = str(preset or "").strip()
+        self.ime_policy = normalize_ime_policy(ime_policy, default="local") if self.new_display else ""
         self.server_path = server_path
         self._popen_fn = popen_fn
         self._socket_factory = socket_factory
         self._handshake_timeout = float(handshake_timeout)
         self._on_video_packet = on_video_packet
         self._on_terminated = on_terminated
+        self._on_device_clipboard = on_device_clipboard
+        self._on_ack_clipboard = on_ack_clipboard
 
         self.scid = secrets.randbelow(0x7FFFFFFE) + 1
+        self.remote_path = f"/data/local/tmp/dbs_{self.scid:08x}.jar"
         self.local_port: int | None = None
         self.device_name = ""
         self.width = 0
@@ -788,6 +931,10 @@ class ScrcpySession:
         self._closed = False
         self._stopping = False
         self._seq_counter = 1
+
+    @property
+    def is_virtual(self) -> bool:
+        return bool(self.new_display)
 
     def next_sequence(self) -> int:
         with self._ctrl_lock:
@@ -822,8 +969,8 @@ class ScrcpySession:
         if not adb_argv:
             raise ScrcpyError("未找到 adb 可执行文件，请在「连接与设置」中配置 adb 路径")
 
-        # 1. Push scrcpy-server jar
-        code, _out, err = self.adb.run(["-s", self.serial, "push", str(verified), SCRCPY_REMOTE_PATH])
+        # 1. Push scrcpy-server jar to an isolated per-session path (avoids cleanup races)
+        code, _out, err = self.adb.run(["-s", self.serial, "push", str(verified), self.remote_path])
         if code != 0:
             raise ScrcpyError(f"推送 scrcpy-server 到手机失败：{err.strip() or f'exit {code}'}")
 
@@ -837,7 +984,13 @@ class ScrcpySession:
         try:
             # 3. Launch scrcpy-server on Android device
             full_cmd = list(adb_argv) + ["-s", self.serial] + build_server_cmd(
-                self.scid, quality=self.quality, max_fps=self.max_fps
+                self.scid,
+                quality=self.quality,
+                max_fps=self.max_fps,
+                remote_path=self.remote_path,
+                new_display=self.new_display,
+                start_app=self.start_app,
+                ime_policy=self.ime_policy or "local",
             )
             try:
                 self._proc = self._popen_fn(
@@ -919,7 +1072,10 @@ class ScrcpySession:
             threading.Thread(target=self._video_reader_loop, daemon=True).start()
             threading.Thread(target=self._control_drain_loop, daemon=True).start()
 
-            if screen_off:
+            if self.start_app:
+                self.send_control_packets([pack_start_app(self.start_app)])
+
+            if screen_off and not self.is_virtual:
                 self.set_display_power(False)
         except Exception:
             self.close()
@@ -976,7 +1132,19 @@ class ScrcpySession:
             return
         try:
             while not self._closed:
-                drain_device_message(lambda n: _recv_exact(sock, n))
+                msg_type, payload = drain_device_message(lambda n: _recv_exact(sock, n))
+                if msg_type == DEVICE_MSG_CLIPBOARD and isinstance(payload, bytes) and self._on_device_clipboard is not None:
+                    text = payload.decode("utf-8", errors="replace")
+                    if text:
+                        try:
+                            self._on_device_clipboard(text)
+                        except Exception:
+                            pass
+                elif msg_type == DEVICE_MSG_ACK_CLIPBOARD and isinstance(payload, int) and self._on_ack_clipboard is not None:
+                    try:
+                        self._on_ack_clipboard(payload)
+                    except Exception:
+                        pass
         except (EOFError, OSError, ScrcpyError):
             pass
 
@@ -993,7 +1161,7 @@ class ScrcpySession:
             port = self.local_port
 
         # Best-effort restore physical screen before tearing down control socket
-        if should_restore_power and ctrl_sock is not None:
+        if should_restore_power and not self.is_virtual and ctrl_sock is not None:
             try:
                 with self._ctrl_lock:
                     ctrl_sock.sendall(pack_set_display_power(True))
@@ -1045,8 +1213,28 @@ class ScrcpySession:
                 pass
 
 
+class _SessionSlot:
+    """State bucket for one mirror or virtual-display session."""
+
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+        self.session: ScrcpySession | None = None
+        self.starting = False
+        self.quality = "1080"
+        self.max_fps = 60
+        self.preset = ""
+        self.ime_policy = "local"
+        self.package = ""
+        self.app_name = ""
+        self.last_error = ""
+        self.clients: set[_WsClient] = set()
+        self.last_sent_clipboard: tuple[str, float] = ("", 0.0)
+        self.last_device_clipboard = ""
+        self.grace_timer: threading.Timer | None = None
+
+
 class PhoneMirrorManager:
-    """Single-session coordinator shared across HTTP API and WebSocket viewers."""
+    """Multi-session coordinator for main phone mirror ('main') and virtual app windows."""
 
     def __init__(
         self,
@@ -1055,20 +1243,34 @@ class PhoneMirrorManager:
         popen_fn=subprocess.Popen,
         socket_factory=socket.create_connection,
         handshake_timeout: float = 8.0,
+        virtual_idle_grace: float = 5.0,
     ):
         self._adb_factory = adb_factory
         self._server_path = Path(server_path)
         self._popen_fn = popen_fn
         self._socket_factory = socket_factory
         self._handshake_timeout = float(handshake_timeout)
+        self._virtual_idle_grace = float(virtual_idle_grace)
 
         self._lock = threading.RLock()
-        self._session: ScrcpySession | None = None
-        self._starting = False
-        self._quality = "1080"
-        self._max_fps = 60
-        self._last_error = ""
-        self._clients: set[_WsClient] = set()
+        self._slots: dict[str, _SessionSlot] = {"main": _SessionSlot("main")}
+
+    def _get_slot(self, session_id: str = "main", create: bool = True) -> _SessionSlot | None:
+        sid = str(session_id or "main").strip() or "main"
+        slot = self._slots.get(sid)
+        if slot is None and create:
+            slot = _SessionSlot(sid)
+            self._slots[sid] = slot
+        return slot
+
+    def _cancel_grace(self, slot: _SessionSlot):
+        t = slot.grace_timer
+        slot.grace_timer = None
+        if t is not None:
+            try:
+                t.cancel()
+            except Exception:
+                pass
 
     def _server_ready(self) -> bool:
         try:
@@ -1077,49 +1279,118 @@ class PhoneMirrorManager:
         except ScrcpyError:
             return False
 
-    def status(self) -> dict:
+    def list_sessions(self) -> list[dict]:
         with self._lock:
-            sess = self._session
+            out = []
+            for sid, slot in self._slots.items():
+                sess = slot.session
+                if sess is None and not slot.starting:
+                    continue
+                out.append({
+                    "session_id": sid,
+                    "running": sess is not None,
+                    "starting": slot.starting,
+                    "is_virtual": bool(sess.is_virtual) if sess is not None else (sid != "main"),
+                    "serial": sess.serial if sess else "",
+                    "device_name": sess.device_name if sess else "",
+                    "package": sess.start_app if sess else slot.package,
+                    "app_name": sess.app_name if sess else slot.app_name,
+                    "preset": sess.preset if sess else slot.preset,
+                    "width": sess.width if sess else 0,
+                    "height": sess.height if sess else 0,
+                    "clients": len(slot.clients),
+                })
+            return out
+
+    def status(self, session_id: str = "main") -> dict:
+        sid = str(session_id or "main").strip() or "main"
+        with self._lock:
+            slot = self._slots.get(sid)
+            sess = slot.session if slot else None
             return {
                 "ok": True,
+                "session_id": sid,
+                "is_virtual": bool(sess.is_virtual) if sess is not None else (sid != "main"),
+                "package": sess.start_app if sess else (slot.package if slot else ""),
+                "app_name": sess.app_name if sess else (slot.app_name if slot else ""),
+                "preset": sess.preset if sess else (slot.preset if slot else ""),
+                "ime_policy": sess.ime_policy if sess else (slot.ime_policy if slot else "local"),
                 "running": sess is not None,
-                "starting": self._starting,
+                "starting": slot.starting if slot else False,
                 "serial": sess.serial if sess else "",
                 "device_name": sess.device_name if sess else "",
                 "width": sess.width if sess else 0,
                 "height": sess.height if sess else 0,
                 "screen_off": sess.screen_off if sess else False,
-                "quality": sess.quality if sess else self._quality,
-                "max_fps": sess.max_fps if sess else self._max_fps,
-                "clients": len(self._clients),
+                "quality": sess.quality if sess else (slot.quality if slot else "1080"),
+                "max_fps": sess.max_fps if sess else (slot.max_fps if slot else 60),
+                "clients": len(slot.clients) if slot else 0,
                 "server_ready": self._server_ready(),
-                "error": self._last_error,
+                "error": slot.last_error if slot else "",
+                "sessions": self.list_sessions(),
             }
 
-    def _broadcast_status(self):
-        payload = json.dumps({"type": "status", **self.status()}, ensure_ascii=False)
+    def _broadcast_status(self, session_id: str = "main", notify_main: bool = False):
+        sid = str(session_id or "main").strip() or "main"
+        payload = json.dumps({"type": "status", **self.status(sid)}, ensure_ascii=False)
         with self._lock:
-            clients = list(self._clients)
+            slot = self._slots.get(sid)
+            clients = list(slot.clients) if slot else []
         for client in clients:
             client.enqueue_text(payload)
+        if notify_main and sid != "main":
+            self._broadcast_status("main", notify_main=False)
 
-    def _on_video_packet(self, is_config: bool, is_keyframe: bool, packet: bytes):
+    def _on_video_packet(self, session_id: str, is_config: bool, is_keyframe: bool, packet: bytes):
         with self._lock:
-            clients = list(self._clients)
+            slot = self._slots.get(session_id)
+            clients = list(slot.clients) if slot else []
         for client in clients:
             client.enqueue_video(is_config, is_keyframe, packet)
 
-    def _on_session_terminated(self, session: ScrcpySession, reason: str):
+    def _on_device_clipboard(self, session_id: str, text: str):
+        now = time.monotonic()
         with self._lock:
-            if self._session is not session:
+            slot = self._slots.get(session_id)
+            if slot is None:
                 return
-            self._session = None
-            self._last_error = reason
-        self._broadcast_status()
+            sent_text, sent_at = slot.last_sent_clipboard
+            if sent_text and text == sent_text and (now - sent_at) < 2.5:
+                return
+            slot.last_device_clipboard = text
+            clients = list(slot.clients)
+        payload = json.dumps(
+            {"type": "clipboard", "text": text, "time": time.strftime("%H:%M:%S")},
+            ensure_ascii=False,
+        )
+        for client in clients:
+            client.enqueue_text(payload)
 
-    def _trigger_reset_video(self):
+    def _on_ack_clipboard(self, session_id: str, seq: int):
         with self._lock:
-            sess = self._session
+            slot = self._slots.get(session_id)
+            clients = list(slot.clients) if slot else []
+        if not clients:
+            return
+        payload = json.dumps({"type": "ack_clipboard", "seq": int(seq)}, ensure_ascii=False)
+        for client in clients:
+            client.enqueue_text(payload)
+
+    def _on_session_terminated(self, session: ScrcpySession, reason: str):
+        sid = session.session_id
+        with self._lock:
+            slot = self._slots.get(sid)
+            if slot is None or slot.session is not session:
+                return
+            self._cancel_grace(slot)
+            slot.session = None
+            slot.last_error = reason
+        self._broadcast_status(sid, notify_main=True)
+
+    def _trigger_reset_video(self, session_id: str = "main"):
+        with self._lock:
+            slot = self._slots.get(session_id)
+            sess = slot.session if slot else None
         if sess is not None:
             sess.reset_video()
 
@@ -1130,9 +1401,22 @@ class PhoneMirrorManager:
         quality: str | None = None,
         max_fps: int | str | None = None,
         screen_off: bool = False,
+        *,
+        session_id: str = "main",
+        new_display: str = "",
+        start_app: str = "",
+        app_name: str = "",
+        preset: str = "",
+        ime_policy: str = "local",
     ) -> dict:
-        q = normalize_quality(quality if quality is not None else self._quality)
-        fps = normalize_max_fps(max_fps if max_fps is not None else self._max_fps)
+        sid = str(session_id or "main").strip() or "main"
+        vd = str(new_display or "").strip()
+        pkg = str(start_app or "").strip()
+        pol = normalize_ime_policy(ime_policy, default="local") if vd else ""
+        with self._lock:
+            slot = self._get_slot(sid, create=True)
+            q = normalize_quality(quality if quality is not None else slot.quality)
+            fps = normalize_max_fps(max_fps if max_fps is not None else slot.max_fps)
 
         adb = self._adb_factory(cfg)
         try:
@@ -1145,20 +1429,39 @@ class PhoneMirrorManager:
 
         old_session = None
         with self._lock:
-            if self._starting:
+            slot = self._get_slot(sid, create=True)
+            if slot.starting:
                 raise ScrcpyError("正在连接手机屏幕，请稍候")
-            cur = self._session
-            if cur is not None and cur.serial == target_serial and cur.quality == q and cur.max_fps == fps:
-                if cur.screen_off != bool(screen_off):
+            self._cancel_grace(slot)
+            cur = slot.session
+            if (
+                cur is not None
+                and cur.serial == target_serial
+                and cur.quality == q
+                and cur.max_fps == fps
+                and cur.new_display == vd
+                and cur.start_app == pkg
+                and (not vd or cur.ime_policy == pol)
+            ):
+                if cur.is_virtual and cur.start_app:
+                    try:
+                        cur.send_control_packets([pack_start_app(cur.start_app)])
+                    except ScrcpyError:
+                        pass
+                elif not cur.is_virtual and cur.screen_off != bool(screen_off):
                     cur.set_display_power(not bool(screen_off))
-                    self._broadcast_status()
-                return self.status()
+                    self._broadcast_status(sid)
+                return self.status(sid)
             old_session = cur
-            self._session = None
-            self._starting = True
-            self._quality = q
-            self._max_fps = fps
-            self._last_error = ""
+            slot.session = None
+            slot.starting = True
+            slot.quality = q
+            slot.max_fps = fps
+            slot.preset = str(preset or "")
+            slot.ime_policy = pol or "local"
+            slot.package = pkg
+            slot.app_name = str(app_name or "").strip() or pkg
+            slot.last_error = ""
 
         if old_session is not None:
             old_session.close()
@@ -1172,59 +1475,109 @@ class PhoneMirrorManager:
             popen_fn=self._popen_fn,
             socket_factory=self._socket_factory,
             handshake_timeout=self._handshake_timeout,
-            on_video_packet=self._on_video_packet,
+            on_video_packet=lambda c, k, p, s_id=sid: self._on_video_packet(s_id, c, k, p),
             on_terminated=self._on_session_terminated,
+            on_device_clipboard=lambda txt, s_id=sid: self._on_device_clipboard(s_id, txt),
+            on_ack_clipboard=lambda seq, s_id=sid: self._on_ack_clipboard(s_id, seq),
+            session_id=sid,
+            new_display=vd,
+            start_app=pkg,
+            app_name=str(app_name or "").strip() or pkg,
+            preset=str(preset or ""),
+            ime_policy=pol or "local",
         )
         try:
-            session.start(screen_off=bool(screen_off))
+            session.start(screen_off=bool(screen_off) and not session.is_virtual)
         except Exception as exc:
             with self._lock:
-                self._starting = False
-                self._last_error = str(exc)
-            self._broadcast_status()
+                slot = self._get_slot(sid, create=True)
+                slot.starting = False
+                slot.last_error = str(exc)
+            self._broadcast_status(sid, notify_main=True)
             raise
 
         with self._lock:
-            self._session = session
-            self._starting = False
-            self._last_error = ""
-            clients = list(self._clients)
+            slot = self._get_slot(sid, create=True)
+            slot.session = session
+            slot.starting = False
+            slot.last_error = ""
+            clients = list(slot.clients)
 
-        self._broadcast_status()
+        self._broadcast_status(sid, notify_main=True)
         if clients:
             session.reset_video()
-        return self.status()
+        return self.status(sid)
 
-    def stop(self) -> dict:
+    def stop(self, session_id: str = "main") -> dict:
+        sid = str(session_id or "main").strip() or "main"
         with self._lock:
-            sess = self._session
-            self._session = None
-            self._last_error = ""
+            slot = self._slots.get(sid)
+            if slot is None:
+                return self.status(sid)
+            self._cancel_grace(slot)
+            sess = slot.session
+            slot.session = None
+            slot.last_error = ""
         if sess is not None:
             sess.close()
-        self._broadcast_status()
-        return self.status()
+        self._broadcast_status(sid, notify_main=True)
+        if sid != "main":
+            with self._lock:
+                cur_slot = self._slots.get(sid)
+                if cur_slot is not None and cur_slot.session is None and not cur_slot.clients and not cur_slot.starting:
+                    self._slots.pop(sid, None)
+        return self.status(sid)
 
     def shutdown(self):
         with self._lock:
-            sess = self._session
-            self._session = None
-            clients = list(self._clients)
-            self._clients.clear()
+            sessions: list[ScrcpySession] = []
+            clients: list[_WsClient] = []
+            for slot in self._slots.values():
+                self._cancel_grace(slot)
+                if slot.session is not None:
+                    sessions.append(slot.session)
+                    slot.session = None
+                clients.extend(slot.clients)
+                slot.clients.clear()
+            self._slots = {"main": _SessionSlot("main")}
         for client in clients:
             client.close()
-        if sess is not None:
+        for sess in sessions:
             sess.close()
 
-    def handle_websocket(self, ws: WebSocketConn):
-        client = _WsClient(ws, on_need_keyframe=self._trigger_reset_video)
+    def _schedule_virtual_idle_stop(self, sid: str):
+        if sid == "main" or self._virtual_idle_grace <= 0:
+            return
         with self._lock:
-            self._clients.add(client)
-            sess = self._session
+            slot = self._slots.get(sid)
+            if slot is None or slot.session is None or not slot.session.is_virtual or slot.clients:
+                return
+            self._cancel_grace(slot)
+
+            def _expire():
+                with self._lock:
+                    cur = self._slots.get(sid)
+                    if cur is None or cur.clients or cur.session is None:
+                        return
+                self.stop(sid)
+
+            timer = threading.Timer(self._virtual_idle_grace, _expire)
+            timer.daemon = True
+            slot.grace_timer = timer
+            timer.start()
+
+    def handle_websocket(self, ws: WebSocketConn, session_id: str = "main"):
+        sid = str(session_id or "main").strip() or "main"
+        client = _WsClient(ws, on_need_keyframe=lambda s_id=sid: self._trigger_reset_video(s_id))
+        with self._lock:
+            slot = self._get_slot(sid, create=True)
+            self._cancel_grace(slot)
+            slot.clients.add(client)
+            sess = slot.session
             cached_config = sess.last_config_packet if sess is not None else None
 
         try:
-            client.enqueue_text(json.dumps({"type": "status", **self.status()}, ensure_ascii=False))
+            client.enqueue_text(json.dumps({"type": "status", **self.status(sid)}, ensure_ascii=False))
             if sess is not None:
                 if cached_config:
                     client.enqueue_video(True, False, cached_config)
@@ -1251,7 +1604,8 @@ class PhoneMirrorManager:
                     resumed = client.set_paused(bool(cmd.get("paused", False)))
                     if resumed:
                         with self._lock:
-                            cur = self._session
+                            cur_slot = self._slots.get(sid)
+                            cur = cur_slot.session if cur_slot else None
                             cfg_pkt = cur.last_config_packet if cur is not None else None
                         if cur is not None:
                             if cfg_pkt:
@@ -1260,20 +1614,29 @@ class PhoneMirrorManager:
                     continue
 
                 with self._lock:
-                    cur = self._session
+                    cur_slot = self._slots.get(sid)
+                    cur = cur_slot.session if cur_slot else None
                 if cur is None:
                     client.enqueue_text(json.dumps({"type": "error", "message": "当前未连接手机投屏"}, ensure_ascii=False))
                     continue
 
                 if cmd_type == "display_power":
+                    if cur.is_virtual:
+                        continue
                     try:
                         cur.set_display_power(bool(cmd.get("on", True)))
-                        self._broadcast_status()
+                        self._broadcast_status(sid)
                     except ScrcpyError as exc:
                         client.enqueue_text(json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False))
                     continue
 
                 try:
+                    if cmd_type == "clipboard":
+                        clip_text = str(cmd.get("text") or "")
+                        if clip_text:
+                            with self._lock:
+                                if cur_slot is not None:
+                                    cur_slot.last_sent_clipboard = (clip_text, time.monotonic())
                     packets = encode_control_command(cmd, seq_fn=cur.next_sequence)
                     cur.send_control_packets(packets)
                 except (ValueError, ScrcpyError) as exc:
@@ -1281,6 +1644,336 @@ class PhoneMirrorManager:
         except WebSocketError:
             pass
         finally:
+            should_grace = False
             with self._lock:
-                self._clients.discard(client)
+                cur_slot = self._slots.get(sid)
+                if cur_slot is not None:
+                    cur_slot.clients.discard(client)
+                    if cur_slot.session is not None and cur_slot.session.is_virtual and not cur_slot.clients:
+                        should_grace = True
             client.close()
+            if should_grace:
+                self._schedule_virtual_idle_stop(sid)
+
+
+# ---------------------------------------------- ADB device helpers (info/app/push) ----
+
+def _adb_run(adb, args: list[str], timeout: float | None = None) -> tuple[int, str, str]:
+    if timeout is None:
+        return adb.run(args)
+    try:
+        return adb.run(args, timeout=timeout)
+    except TypeError:
+        return adb.run(args)
+
+
+def sanitize_upload_filename(name: str) -> str:
+    raw = str(name or "").replace("\\", "/")
+    base = Path(raw).name.strip()
+    cleaned = _FILENAME_BAD_RE.sub("_", base).strip(" .")
+    if not cleaned:
+        return "upload.bin"
+    if len(cleaned) > 160:
+        p = Path(cleaned)
+        ext = p.suffix[:24]
+        cleaned = (p.stem[: 160 - len(ext)] or "upload") + ext
+    return cleaned
+
+
+def parse_device_info_output(output: str) -> dict:
+    section = ""
+    bat_level: int | None = None
+    bat_temp: float | None = None
+    bat_status = 0
+    ac_powered = False
+    usb_powered = False
+    wireless_powered = False
+    wifi_ip = ""
+    cellular_ip = ""
+    installed: set[str] = set()
+
+    for raw_line in str(output or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line in ("===BAT===", "===NET===", "===PKG==="):
+            section = line
+            continue
+        if section == "===BAT===":
+            key, sep, val = line.partition(":")
+            if not sep:
+                continue
+            k = key.strip().lower()
+            v = val.strip()
+            if k == "level":
+                try:
+                    bat_level = int(v)
+                except ValueError:
+                    pass
+            elif k == "temperature":
+                try:
+                    bat_temp = round(int(v) / 10.0, 1)
+                except ValueError:
+                    pass
+            elif k == "status":
+                try:
+                    bat_status = int(v)
+                except ValueError:
+                    pass
+            elif k == "ac powered":
+                ac_powered = v.lower() == "true"
+            elif k == "usb powered":
+                usb_powered = v.lower() == "true"
+            elif k == "wireless powered":
+                wireless_powered = v.lower() == "true"
+        elif section == "===NET===":
+            m = re.search(r"^\d+:\s+([^\s]+)\s+inet\s+([0-9.]+)/", line)
+            if not m:
+                continue
+            iface, ip_addr = m.group(1), m.group(2)
+            if ip_addr.startswith("127."):
+                continue
+            if iface.startswith(("wlan", "eth")) and not wifi_ip:
+                wifi_ip = ip_addr
+            elif iface.startswith(("rmnet", "ccmni", "pdp", "wwan", "cell")) and not cellular_ip:
+                cellular_ip = ip_addr
+        elif section == "===PKG===":
+            if line.startswith("package:"):
+                installed.add(line[len("package:"):].strip())
+
+    plugged = ac_powered or usb_powered or wireless_powered
+    charging = bat_status == 2
+    full = bat_status == 5
+    net_type = "Wi-Fi" if wifi_ip else ("移动网络" if cellular_ip else "未联网")
+    net_ip = wifi_ip or cellular_ip
+    proxy_apps = [
+        {"package": pkg, "label": label}
+        for pkg, label in KNOWN_PROXY_APPS
+        if pkg in installed
+    ]
+    return {
+        "battery": {
+            "level": bat_level,
+            "temp_c": bat_temp,
+            "charging": charging,
+            "full": full,
+            "plugged": plugged,
+            "status": bat_status,
+        },
+        "network": {
+            "type": net_type,
+            "ip": net_ip,
+            "wifi_ip": wifi_ip,
+            "cellular_ip": cellular_ip,
+        },
+        "proxy_apps": proxy_apps,
+    }
+
+
+def parse_scrcpy_apps_output(output: str) -> list[dict]:
+    seen: set[str] = set()
+    apps: list[dict] = []
+    for line in str(output or "").splitlines():
+        m = _APP_LINE_RE.match(line)
+        if not m:
+            continue
+        marker, name, pkg = m.group(1), m.group(2).strip(), m.group(3).strip()
+        if pkg in seen:
+            continue
+        seen.add(pkg)
+        apps.append({"name": name or pkg, "package": pkg, "system": marker == "*"})
+    apps.sort(key=lambda item: (1 if item["system"] else 0, item["name"].lower(), item["package"].lower()))
+    return apps
+
+
+def list_device_apps(
+    adb,
+    serial: str = "",
+    *,
+    server_path: Path | str = DEFAULT_SERVER_PATH,
+    force_refresh: bool = False,
+) -> dict:
+    try:
+        device = adb.online_device(serial=str(serial or "").strip())
+    except Exception as exc:
+        raise ScrcpyError(str(exc)) from exc
+    if device is None:
+        raise ScrcpyError("未检测到在线 Android 设备")
+    target_serial = device["serial"]
+
+    now = time.monotonic()
+    if not force_refresh:
+        with _apps_cache_lock:
+            cached = _apps_cache.get(target_serial)
+            if cached and (now - cached[0]) < _APPS_CACHE_TTL:
+                return {"ok": True, "serial": target_serial, "apps": [dict(a) for a in cached[1]]}
+
+    verified = verify_server_binary(server_path)
+    remote_jar = f"/data/local/tmp/dbs_la_{secrets.token_hex(4)}.jar"
+    code, _out, err = _adb_run(adb, ["-s", target_serial, "push", str(verified), remote_jar], timeout=15)
+    if code != 0:
+        raise ScrcpyError(f"推送 scrcpy-server 失败：{err.strip() or f'exit {code}'}")
+    try:
+        code, out, err = _adb_run(
+            adb,
+            [
+                "-s",
+                target_serial,
+                "shell",
+                f"CLASSPATH={remote_jar}",
+                "app_process",
+                "/",
+                "com.genymobile.scrcpy.Server",
+                SCRCPY_SERVER_VERSION,
+                "list_apps=true",
+            ],
+            timeout=20,
+        )
+    finally:
+        try:
+            _adb_run(adb, ["-s", target_serial, "shell", "rm", "-f", remote_jar], timeout=5)
+        except Exception:
+            pass
+    if code != 0 and "List of apps:" not in out:
+        raise ScrcpyError((err or out).strip() or "读取手机应用列表失败")
+    apps = parse_scrcpy_apps_output(out)
+    with _apps_cache_lock:
+        _apps_cache[target_serial] = (time.monotonic(), [dict(a) for a in apps])
+    return {"ok": True, "serial": target_serial, "apps": apps}
+
+
+def get_device_info(adb, serial: str = "") -> dict:
+    try:
+        device = adb.online_device(serial=str(serial or "").strip())
+    except Exception as exc:
+        raise ScrcpyError(str(exc)) from exc
+    if device is None:
+        raise ScrcpyError("未检测到在线 Android 设备")
+    target_serial = device["serial"]
+    code, out, err = _adb_run(
+        adb,
+        [
+            "-s",
+            target_serial,
+            "shell",
+            "echo ===BAT===; dumpsys battery; echo ===NET===; ip -o -4 addr show 2>/dev/null; echo ===PKG===; pm list packages",
+        ],
+    )
+    if code != 0 and not out.strip():
+        raise ScrcpyError(err.strip() or "读取手机设备信息失败")
+    parsed = parse_device_info_output(out)
+    return {"ok": True, "serial": target_serial, "model": device.get("model") or "", **parsed}
+
+
+def launch_device_app(adb, package: str, serial: str = "") -> dict:
+    pkg = str(package or "").strip()
+    if not _PACKAGE_RE.match(pkg):
+        raise ScrcpyError(f"无效的 Android 应用包名：{pkg}")
+    try:
+        device = adb.online_device(serial=str(serial or "").strip())
+    except Exception as exc:
+        raise ScrcpyError(str(exc)) from exc
+    if device is None:
+        raise ScrcpyError("未检测到在线 Android 设备")
+    target_serial = device["serial"]
+
+    component = ""
+    code, out, _err = _adb_run(
+        adb,
+        ["-s", target_serial, "shell", "cmd", "package", "resolve-activity", "--brief", pkg],
+    )
+    if code == 0:
+        for line in reversed(out.splitlines()):
+            cand = line.strip()
+            if _COMPONENT_RE.match(cand):
+                component = cand
+                break
+
+    if component:
+        code, out, err = _adb_run(adb, ["-s", target_serial, "shell", "am", "start", "-n", component])
+        if code == 0 and "Error:" not in out and "Error:" not in err:
+            return {"ok": True, "serial": target_serial, "package": pkg, "component": component}
+
+    code, out, err = _adb_run(
+        adb,
+        ["-s", target_serial, "shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"],
+    )
+    if code != 0 or "No activities found" in out or "No activities found" in err:
+        raise ScrcpyError((err or out).strip() or f"无法启动手机应用 {pkg}")
+    return {"ok": True, "serial": target_serial, "package": pkg, "component": component}
+
+
+def push_or_install_file(
+    adb,
+    local_path: Path | str,
+    filename: str,
+    serial: str = "",
+    action: str = "auto",
+) -> dict:
+    src = Path(local_path)
+    if not src.is_file():
+        raise ScrcpyError("待发送的本地文件不存在")
+    safe_name = sanitize_upload_filename(filename or src.name)
+    size = src.stat().st_size
+    act = str(action or "auto").strip().lower()
+    if act not in ("auto", "push", "install"):
+        raise ScrcpyError(f"不支持的传输模式：{act}")
+    mode = "install" if (act == "install" or (act == "auto" and safe_name.lower().endswith(".apk"))) else "push"
+
+    try:
+        device = adb.online_device(serial=str(serial or "").strip())
+    except Exception as exc:
+        raise ScrcpyError(str(exc)) from exc
+    if device is None:
+        raise ScrcpyError("未检测到在线 Android 设备")
+    target_serial = device["serial"]
+
+    if mode == "install":
+        code, out, err = _adb_run(adb, ["-s", target_serial, "install", "-r", str(src)], timeout=120)
+        combined = "\n".join(x for x in (out.strip(), err.strip()) if x)
+        if code != 0 or "Failure" in combined:
+            raise ScrcpyError(f"安装 APK 失败：{combined or f'exit {code}'}")
+        return {
+            "ok": True,
+            "mode": "install",
+            "serial": target_serial,
+            "filename": safe_name,
+            "size": size,
+            "message": f"已安装 APK：{safe_name}",
+        }
+
+    remote_path = f"/sdcard/Download/{safe_name}"
+    code, out, err = _adb_run(adb, ["-s", target_serial, "push", str(src), remote_path], timeout=120)
+    if code != 0:
+        raise ScrcpyError(f"发送文件失败：{(err or out).strip() or f'exit {code}'}")
+
+    # Best-effort trigger media scanner so pushed photos/videos appear in Gallery
+    quoted = _url_quote(safe_name, safe="")
+    try:
+        _adb_run(
+            adb,
+            [
+                "-s",
+                target_serial,
+                "shell",
+                "am",
+                "broadcast",
+                "-a",
+                "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+                "-d",
+                f"file:///sdcard/Download/{quoted}",
+            ],
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "mode": "push",
+        "serial": target_serial,
+        "filename": safe_name,
+        "remote_path": remote_path,
+        "size": size,
+        "message": f"已发送至手机 {remote_path}",
+    }

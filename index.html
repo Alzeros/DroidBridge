@@ -653,7 +653,19 @@
     grid-template-columns:minmax(316px,max-content) minmax(280px,1fr);
   }
   .phone-stage-panel{
-    display:flex;flex-direction:column;min-height:0;overflow:hidden;
+    display:flex;flex-direction:column;min-height:0;overflow:hidden;position:relative;
+  }
+  .phone-drop-overlay{
+    position:absolute;inset:10px;z-index:20;border-radius:14px;
+    border:2px dashed hsl(var(--primary));background:hsl(var(--surface) / .92);
+    backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    color:hsl(var(--primary));text-align:center;padding:20px;pointer-events:none;
+  }
+  .phone-drop-overlay[hidden]{display:none}
+  .phone-drop-overlay strong{font-size:14.5px;font-weight:650}
+  .phone-drop-overlay span{font-size:12px;color:hsl(var(--muted))}
+  .phone-rec-btn.is-rec{
+    background:hsl(var(--red-soft));border-color:hsl(var(--red) / .4);color:hsl(var(--red));
   }
   .phone-empty{
     flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
@@ -688,7 +700,12 @@
   #phoneCanvas{
     display:block;border-radius:15px;background:#000;cursor:pointer;touch-action:none;user-select:none;outline:none;
   }
-  #phoneCanvas:focus-visible{box-shadow:0 0 0 2px hsl(var(--primary))}
+  #phoneCanvas:focus-visible{box-shadow:0 0 0 2px hsl(var(--primary) / .4)}
+  .phone-ime-proxy{
+    position:absolute;left:0;top:0;width:2px;height:20px;padding:0;margin:0;border:0;
+    opacity:0;pointer-events:none;resize:none;overflow:hidden;background:transparent;color:transparent;
+    caret-color:transparent;outline:none;z-index:2;font-size:14px;line-height:20px;
+  }
   .phone-nav-bar{
     flex:none;display:flex;align-items:center;justify-content:center;gap:10px;
     padding:8px 14px;border-top:1px solid hsl(var(--line));background:hsl(var(--surface));
@@ -718,6 +735,8 @@
   }
   .phone-ctrl-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .phone-ctrl-grid .btn{padding:5px 8px;font-size:12px;justify-content:center;white-space:nowrap}
+  .phone-quick-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed hsl(var(--line))}
+  .phone-quick-row .btn{padding:5px 8px;font-size:12px;justify-content:center;white-space:nowrap}
   .phone-text-area{
     display:block;width:100%;min-height:52px;max-height:110px;resize:vertical;padding:7px 9px;
     border:1px solid hsl(var(--line));border-radius:var(--radius-sm);
@@ -727,6 +746,19 @@
   .phone-text-actions{display:flex;gap:6px;margin-top:7px}
   .phone-text-actions .btn{flex:1;justify-content:center;padding:5px 8px;font-size:12px}
   .phone-text-hint{margin-top:5px;font-size:11px;color:hsl(var(--muted));line-height:1.4}
+  .phone-clip-sync{margin-top:9px;padding-top:8px;border-top:1px dashed hsl(var(--line))}
+  .phone-clip-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;font-size:11.5px;color:hsl(var(--muted))}
+  .phone-clip-head-left{display:inline-flex;align-items:center;gap:8px;min-width:0}
+  .phone-clip-head-left strong{color:hsl(var(--text));font-weight:600;white-space:nowrap}
+  .phone-clip-auto{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:hsl(var(--muted));cursor:pointer;user-select:none;white-space:nowrap}
+  .phone-clip-auto input{margin:0;accent-color:hsl(var(--primary))}
+  .phone-clip-actions{display:inline-flex;align-items:center;gap:4px;flex:none}
+  .phone-clip-preview{
+    padding:6px 8px;border-radius:7px;background:hsl(var(--surface-soft));border:1px solid hsl(var(--line));
+    font:11.5px/1.45 ui-monospace,Consolas,"Cascadia Code",monospace;color:hsl(var(--text));
+    max-height:52px;overflow:hidden;word-break:break-all;white-space:pre-wrap;
+  }
+  .phone-clip-preview.empty{color:hsl(var(--subtle));font-family:inherit}
   .phone-stat-list{display:flex;flex-direction:column;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid hsl(var(--line))}
   .phone-quality-grid{display:grid;grid-template-columns:1fr;gap:8px}
   .phone-layout.is-portrait .phone-quality-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -734,6 +766,122 @@
   .phone-stat-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
   .phone-stat-row span{color:hsl(var(--muted))}
   .phone-stat-row strong{font-family:ui-monospace,Consolas,"Cascadia Code",monospace;font-weight:600;color:hsl(var(--text));text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* Pinned Phone Apps Shelf (in View 1) */
+  .phone-shelf{margin-top:18px}
+  .phone-shelf-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .phone-shelf-title{display:flex;align-items:center;gap:8px}
+  .phone-shelf-title h3{margin:0;font-size:14px;font-weight:650}
+  .phone-shelf-sub{font-size:12px;color:hsl(var(--muted))}
+  .phone-shelf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+  .phone-app-card{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;
+    border:1px solid hsl(var(--line));border-radius:var(--radius-md);background:hsl(var(--surface));
+    box-shadow:0 1px 2px hsl(222 44% 12% / .03);
+  }
+  .phone-app-card-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+  .phone-app-avatar{
+    width:32px;height:32px;border-radius:9px;flex:none;display:grid;place-items:center;
+    color:#fff;font-size:13px;font-weight:700;
+  }
+  .phone-app-meta{min-width:0;flex:1}
+  .phone-app-name{font-size:13px;font-weight:650;color:hsl(var(--text));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .phone-app-sub{display:flex;align-items:center;gap:5px;margin-top:2px;font-size:11px;color:hsl(var(--muted));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .phone-app-actions{display:flex;align-items:center;gap:5px;flex:none}
+
+  /* Phone App Picker Modal */
+  .modal.phone-picker{max-width:560px;width:92vw;max-height:82vh;display:flex;flex-direction:column}
+  .phone-picker-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .phone-picker-bar .search{flex:1;min-width:170px}
+  .phone-picker-preset{
+    padding:6px 8px;border:1px solid hsl(var(--line));border-radius:var(--radius-sm);
+    background:hsl(var(--surface));color:hsl(var(--text));font-size:12px;outline:none;
+  }
+  .phone-picker-list{
+    flex:1;min-height:200px;max-height:420px;overflow:auto;
+    border:1px solid hsl(var(--line));border-radius:var(--radius-sm);background:hsl(var(--surface-soft));
+  }
+  .phone-picker-row{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;
+    border-bottom:1px solid hsl(var(--line));background:hsl(var(--surface));
+  }
+  .phone-picker-row:last-child{border-bottom:0}
+  .phone-picker-pkg{font:11px/1.35 ui-monospace,Consolas,monospace;color:hsl(var(--muted));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .phone-picker-empty{padding:36px 16px;text-align:center;color:hsl(var(--muted));font-size:13px}
+
+  /* Active Virtual Sessions List inside Phone View */
+  .phone-sessions-box{margin-top:8px;padding-top:8px;border-top:1px dashed hsl(var(--line));display:flex;flex-direction:column;gap:5px}
+  .phone-sessions-head{font-size:11.5px;font-weight:600;color:hsl(var(--muted))}
+  .phone-session-pill{
+    display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 8px;
+    border-radius:8px;background:hsl(var(--surface-soft));border:1px solid hsl(var(--line));font-size:11.5px;
+  }
+  .phone-session-pill strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:hsl(var(--text))}
+  .phone-session-pill-acts{display:inline-flex;align-items:center;gap:4px;flex:none}
+
+  /* Standalone Phone App Popout Window Mode (?phone_window=...) */
+  body.phone-popout-mode{
+    display:flex!important;flex-direction:column!important;grid-template-columns:none!important;
+    width:100vw!important;height:100vh!important;min-height:0!important;min-width:280px!important;
+    overflow:hidden!important;background:hsl(220 22% 96%);
+  }
+  body.phone-popout-mode .sidebar,
+  body.phone-popout-mode .mobile-head,
+  body.phone-popout-mode #viewApps,
+  body.phone-popout-mode #viewTraffic,
+  body.phone-popout-mode #viewSettings,
+  body.phone-popout-mode #viewPhone > .page-head,
+  body.phone-popout-mode .phone-rail,
+  body.phone-popout-mode .phone-nav-bar{display:none!important}
+  body.phone-popout-mode .stage{
+    flex:1 1 auto!important;display:flex!important;flex-direction:column!important;
+    width:100%!important;max-width:none!important;height:100vh!important;min-height:0!important;
+    margin:0!important;padding:0!important;overflow:hidden!important;
+  }
+  body.phone-popout-mode #viewPhone{
+    display:flex!important;flex-direction:column!important;flex:1 1 auto!important;
+    width:100%!important;max-width:none!important;height:100%!important;min-height:0!important;
+    margin:0!important;padding:0!important;gap:0!important;
+  }
+  body.phone-popout-mode .phone-layout,
+  body.phone-popout-mode .phone-layout.is-portrait{
+    display:flex!important;flex:1 1 auto!important;width:100%!important;min-width:0!important;min-height:0!important;gap:0!important;
+  }
+  body.phone-popout-mode .phone-stage-panel{
+    flex:1 1 auto!important;width:100%!important;min-width:0!important;min-height:0!important;
+    border:0!important;border-radius:0!important;box-shadow:none!important;
+  }
+  body.phone-popout-mode .phone-viewport{padding:4px!important;min-height:0!important}
+  body.phone-popout-mode .phone-canvas-shell{padding:3px;border-radius:12px}
+  body.phone-popout-mode #phoneCanvas{border-radius:9px}
+  body.phone-popout-mode #phoneCanvas:focus-visible{box-shadow:none}
+  .phone-popout-bar{
+    flex:none;width:100%;height:38px;padding:0 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;
+    background:hsl(var(--surface));border-bottom:1px solid hsl(var(--line));font-size:12px;z-index:25;
+  }
+  .phone-popout-bar[hidden]{display:none}
+  .phone-popout-left{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto}
+  .phone-popout-title{font-weight:650;color:hsl(var(--text));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .phone-popout-dim{font:11px ui-monospace,Consolas,monospace;color:hsl(var(--muted));white-space:nowrap;flex:none}
+  .phone-popout-preset{
+    flex:none;height:24px;padding:0 5px;border:1px solid hsl(var(--line));border-radius:6px;
+    background:hsl(var(--surface-soft));color:hsl(var(--text));font-size:11px;outline:none;cursor:pointer;max-width:118px;
+  }
+  .phone-popout-preset:focus{border-color:hsl(var(--primary))}
+  .phone-popout-tools{display:flex;align-items:center;gap:3px;flex:none}
+  .phone-popout-tools .btn{padding:3px 6px;font-size:11.5px;min-height:24px;white-space:nowrap}
+  @media (max-width:580px){
+    .phone-popout-dim{display:none}
+    .phone-popout-preset{max-width:82px;padding:0 3px;font-size:10.5px}
+    .phone-popout-tools{gap:2px}
+    .phone-popout-tools .btn{padding:2px 4px;font-size:11px}
+  }
+  .phone-popout-ime{
+    position:absolute;top:44px;right:10px;left:10px;max-width:380px;margin-left:auto;z-index:30;
+    padding:10px;border-radius:10px;background:hsl(var(--surface));border:1px solid hsl(var(--line));
+    box-shadow:0 12px 28px hsl(222 40% 14% / .18);
+  }
+  .phone-popout-ime[hidden]{display:none}
 
   /* View 5: Settings & ADB */
   .settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
@@ -975,6 +1123,17 @@
 
         <div class="grid" id="appGrid"></div>
 
+        <section class="phone-shelf" id="pinnedPhoneAppsWrap" hidden aria-label="已固定的手机独立窗口应用">
+          <div class="phone-shelf-head">
+            <div class="phone-shelf-title">
+              <h3>手机独立窗口应用</h3>
+              <span class="phone-shelf-sub">Android 虚拟副屏 · 独立桌面窗口</span>
+            </div>
+            <button type="button" class="btn tiny" id="btnShelfAddPhoneApp">+ 添加手机应用</button>
+          </div>
+          <div class="phone-shelf-grid" id="pinnedPhoneAppsGrid"></div>
+        </section>
+
         <div class="recent-strip" id="recentTrafficBar">
           <span class="recent-strip-text" id="recentTrafficText">等待分流请求…</span>
           <button type="button" class="recent-strip-link" id="btnJumpTraffic">查看分流监控 ›</button>
@@ -1195,19 +1354,61 @@
 
   <!-- View 4: 手机屏幕 -->
   <section class="view-pane fill-view" id="viewPhone" role="tabpanel" aria-labelledby="navPhone" hidden>
+    <div class="phone-popout-bar" id="phonePopoutBar" hidden>
+      <div class="phone-popout-left">
+        <span class="phone-live-dot" id="phonePopoutDot"></span>
+        <span class="phone-popout-title" id="phonePopoutTitle">手机应用</span>
+        <span class="phone-popout-dim" id="phonePopoutDim"></span>
+        <select class="phone-popout-preset" id="popPresetSelect" aria-label="切换虚拟屏分辨率" title="切换虚拟屏分辨率与横竖屏（切换分辨率会重载应用）">
+          <option value="phone">竖屏 480×856</option>
+          <option value="phone_hd">竖屏 720×1280</option>
+          <option value="tablet">横屏 960×600</option>
+          <option value="tablet_hd">横屏 1280×720</option>
+          <option value="tablet_fhd">横屏 1600×900</option>
+          <option value="custom" hidden>窗口 1:1</option>
+        </select>
+      </div>
+      <div class="phone-popout-tools">
+        <button type="button" class="btn tiny" id="btnPopMatch" title="按当前窗口物理像素重设虚拟屏，达到 1:1 最清晰（会重载应用）">1:1</button>
+        <button type="button" class="btn tiny" id="btnPopFit" title="调整窗口紧贴当前画面比例（不重载应用）">贴合</button>
+        <button type="button" class="btn tiny" id="btnPopBack" title="返回">返回</button>
+        <button type="button" class="btn tiny" id="btnPopHome" title="主页">主页</button>
+        <button type="button" class="btn tiny" id="btnPopIme" title="多行输入与剪贴板">输入</button>
+        <button type="button" class="btn tiny" id="btnPopShot" title="截屏">截屏</button>
+        <button type="button" class="btn tiny phone-rec-btn" id="btnPopRec" title="录屏">录屏</button>
+        <button type="button" class="btn tiny" id="btnPopUpload" title="传文件 / 装 APK">文件</button>
+      </div>
+    </div>
+    <div class="phone-popout-ime" id="phonePopoutIme" hidden>
+      <textarea class="phone-text-area" id="popImeInput" placeholder="输入中文，回车发送并粘贴到当前手机应用…"></textarea>
+      <div class="phone-text-actions">
+        <button type="button" class="btn primary" id="btnPopImeSend">发送并粘贴</button>
+        <button type="button" class="btn" id="btnPopImePull">拉取手机剪贴板</button>
+        <button type="button" class="btn" id="btnPopImeClose">收起</button>
+      </div>
+    </div>
+
     <div class="page-head">
       <div>
         <h2>手机屏幕</h2>
         <p class="page-sub" id="phoneMetaSub">通过内置 scrcpy-server + WebCodecs 低延迟投屏与操控手机</p>
       </div>
       <div class="head-right">
+        <button class="btn" id="btnPhoneOpenApps" type="button" title="在独立桌面窗口中以虚拟副屏打开手机里的某个应用">独立窗口开应用</button>
+        <button class="btn" id="btnPhoneShot" type="button" hidden title="保存当前手机画面截屏 (PNG)">截屏</button>
+        <button class="btn phone-rec-btn" id="btnPhoneRec" type="button" hidden title="网页直接录制当前投屏画面 (WebM)">录屏</button>
         <button class="btn" id="btnPhoneReset" type="button" hidden>重置画面</button>
         <button class="btn primary" id="btnPhoneToggle" type="button">连接屏幕</button>
       </div>
     </div>
 
     <div class="phone-layout" id="phoneLayout">
-      <section class="panel phone-stage-panel" aria-label="手机屏幕画面">
+      <section class="panel phone-stage-panel" id="phoneStagePanel" aria-label="手机屏幕画面">
+        <div class="phone-drop-overlay" id="phoneDropOverlay" hidden>
+          <strong>松开以发送到手机</strong>
+          <span>.apk 自动安装，其他文件保存至 /sdcard/Download/</span>
+        </div>
+        <input type="file" id="phoneFileInput" multiple hidden>
         <div class="phone-empty" id="phoneEmpty">
           <div class="phone-empty-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 18h.01"/></svg>
@@ -1225,6 +1426,7 @@
 
         <div class="phone-live-wrap" id="phoneLiveWrap" hidden>
           <div class="phone-viewport" id="phoneViewport">
+            <textarea id="phoneImeProxy" class="phone-ime-proxy" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="手机屏幕直打输入代理"></textarea>
             <div class="phone-canvas-shell">
               <canvas id="phoneCanvas" tabindex="0" aria-label="手机屏幕交互画布"></canvas>
             </div>
@@ -1262,12 +1464,16 @@
               <button type="button" class="btn" id="btnPhoneRotate" disabled>旋转屏幕</button>
               <button type="button" class="btn" id="btnPhoneCollapse" disabled>收起面板</button>
             </div>
+            <div class="phone-quick-row">
+              <button type="button" class="btn" id="btnPhoneLaunchClash" disabled title="在手机上一键打开 Clash / 代理客户端">打开 Clash</button>
+              <button type="button" class="btn" id="btnPhoneUpload" disabled title="选择文件发送到 /sdcard/Download/，选 .apk 自动安装">传文件 / APK</button>
+            </div>
           </div>
         </section>
 
         <section class="panel" id="phoneInputPanel">
           <div class="panel-head">
-            <div class="panel-title"><span class="panel-mark chain">IME</span><h3>中文与文本输入</h3></div>
+            <div class="panel-title"><span class="panel-mark chain">IME</span><h3>剪贴板与中文输入</h3></div>
           </div>
           <div class="panel-body">
             <textarea class="phone-text-area" id="phoneTextInput" placeholder="输入中文或长文本，回车发送并粘贴（Shift+Enter 换行）" aria-label="中文与文本输入框"></textarea>
@@ -1275,13 +1481,29 @@
               <button type="button" class="btn primary" id="btnPhonePaste" disabled>发送并粘贴</button>
               <button type="button" class="btn" id="btnPhoneCopy" disabled>仅写剪贴板</button>
             </div>
-            <div class="phone-text-hint">先点击手机输入框获取光标再发送；画布聚焦时也可直敲英文、退格和回车。</div>
+            <label class="phone-clip-auto" style="margin-top:7px" title="开启后点击手机画面直接打字由电脑输入法管理中/英与标点，避免手机输入法篡改英文符号；终端/游戏场景可取消勾选">
+              <input type="checkbox" id="phoneDirectPcIme" checked>画面直打跟随电脑输入法（Shift 切中/英）
+            </label>
+            <div class="phone-text-hint">点击手机画面即可直接输入中英文与符号，支持 Ctrl+V/A/C/X/Z；Ctrl+滚轮缩放；拖入文件直传/装 APK。</div>
+            <div class="phone-clip-sync">
+              <div class="phone-clip-head">
+                <span class="phone-clip-head-left">
+                  <strong>手机剪贴板</strong>
+                  <label class="phone-clip-auto" title="手机复制内容时自动写入电脑剪贴板"><input type="checkbox" id="phoneClipAutoSync" checked>自动同步</label>
+                </span>
+                <span class="phone-clip-actions">
+                  <button type="button" class="btn tiny" id="btnPhoneClipPull" disabled title="主动读取手机当前剪贴板">拉取</button>
+                  <button type="button" class="btn tiny" id="btnPhoneClipCopy" disabled title="复制到电脑剪贴板">复制</button>
+                </span>
+              </div>
+              <div class="phone-clip-preview empty" id="phoneClipPreview">等待手机复制内容…</div>
+            </div>
           </div>
         </section>
 
         <section class="panel" id="phoneQualityPanel">
           <div class="panel-head">
-            <div class="panel-title"><span class="panel-mark">SPEC</span><h3>画质与会话</h3></div>
+            <div class="panel-title"><span class="panel-mark">SPEC</span><h3>画质与设备</h3></div>
           </div>
           <div class="panel-body">
             <div class="phone-quality-grid">
@@ -1303,6 +1525,12 @@
               <div class="phone-stat-row"><span>目标设备</span><strong id="phoneStatDevice">—</strong></div>
               <div class="phone-stat-row"><span>编码尺寸</span><strong id="phoneStatSize">—</strong></div>
               <div class="phone-stat-row"><span>实时帧率</span><strong id="phoneStatFps">—</strong></div>
+              <div class="phone-stat-row"><span>电量温度</span><strong id="phoneStatBattery">—</strong></div>
+              <div class="phone-stat-row"><span>手机网络</span><strong id="phoneStatNet">—</strong></div>
+            </div>
+            <div class="phone-sessions-box" id="phoneSessionsBox" hidden>
+              <div class="phone-sessions-head">运行中的独立应用窗口</div>
+              <div id="phoneSessionsList"></div>
             </div>
           </div>
         </section>
@@ -1426,6 +1654,41 @@
   </div>
 </div>
 
+<div class="modal-mask" id="phoneAppModal" hidden>
+  <div class="modal phone-picker" role="dialog" aria-modal="true" aria-labelledby="phoneAppModalTitle">
+    <h3 id="phoneAppModalTitle">独立窗口打开手机应用</h3>
+    <p style="margin:0 0 10px;font-size:12.5px;color:hsl(var(--muted))">通过 Android 虚拟副屏在电脑弹出独立小窗运行，不打扰手机主屏；可一键钉到「应用台」随时启动。</p>
+    <div class="phone-picker-bar">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="phoneAppSearch" type="search" placeholder="搜索应用名称或包名…" aria-label="搜索手机应用">
+      </div>
+      <div class="chips" id="phoneAppFilterChips" role="group" aria-label="应用分类">
+        <button type="button" class="chip tiny active" data-pfilter="user">用户应用</button>
+        <button type="button" class="chip tiny" data-pfilter="all">全部</button>
+      </div>
+      <select class="phone-picker-preset" id="phoneAppPreset" aria-label="虚拟屏尺寸">
+        <option value="phone">竖屏小窗 480×856（1080p 清晰）</option>
+        <option value="phone_hd">竖屏高清 720×1280</option>
+        <option value="tablet">横屏适中 960×600（1080p 清晰）</option>
+        <option value="tablet_hd">横屏高清 1280×720</option>
+        <option value="tablet_fhd">横屏大屏 1600×900</option>
+      </select>
+      <select class="phone-picker-preset" id="phoneAppImePolicy" aria-label="独立窗口软键盘" title="控制独立窗口内手机软键盘的位置（默认在独立窗口内，不再弹到手机主屏）">
+        <option value="local">窗口内软键盘</option>
+        <option value="hide">隐藏软键盘</option>
+      </select>
+      <button type="button" class="btn tiny" id="btnPhoneAppsRefresh">刷新</button>
+    </div>
+    <div class="phone-picker-list" id="phoneAppList">
+      <div class="phone-picker-empty">点击上方刷新读取手机应用列表…</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnPhoneAppModalClose" type="button">关闭</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-mask" id="confirm" hidden>
   <div class="modal small" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
     <h3 id="confirmTitle">确认操作</h3>
@@ -1442,6 +1705,20 @@
 <script>
 const $ = s => document.querySelector(s);
 const TOKEN = document.querySelector('meta[name="pd-token"]')?.content || '';
+const URL_PARAMS = new URLSearchParams(location.search);
+const PHONE_WINDOW_SESSION = (URL_PARAMS.get('phone_window') || '').trim();
+const IS_PHONE_POPOUT = !!PHONE_WINDOW_SESSION;
+const PHONE_SESSION_ID = IS_PHONE_POPOUT ? PHONE_WINDOW_SESSION : 'main';
+const VD_PRESET_LABELS = {
+  phone:'竖屏 480×856', phone_hd:'竖屏 720×1280',
+  tablet:'横屏 960×600', tablet_hd:'横屏 1280×720', tablet_fhd:'横屏 1600×900',
+  custom:'窗口 1:1',
+};
+let PHONE_APPS_LIST = [];
+let PHONE_APPS_LOADING = false;
+let PHONE_APP_QUERY = '';
+let PHONE_APP_FILTER = 'user';
+let PHONE_APP_OPENING = '';
 let STATE = null;
 let EDIT_ID = null;
 let LOGS = [];
@@ -1493,6 +1770,16 @@ let PHONE_FPS_VALUE = 0;
 let PHONE_LAST_RESET_TS = 0;
 let PHONE_RECONNECT_TIMER = null;
 let PHONE_BUSY = false;
+let PHONE_DEVICE_INFO = null;
+let PHONE_CLIP_TEXT = '';
+let PHONE_CLIP_AUTO = true;
+let PHONE_UPLOADING = false;
+let PHONE_RECORDER = null;
+let PHONE_REC_CHUNKS = [];
+let PHONE_REC_STARTED = 0;
+let PHONE_REC_TIMER = null;
+let PHONE_PINCHING = false;
+let PHONE_DROP_DEPTH = 0;
 
 function esc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -1610,6 +1897,7 @@ function setActiveView(view){
   }
   if(view === 'phone'){
     loadAdbState();
+    loadPhoneDeviceInfo();
     loadPhoneStatus().then(() => {
       if(PHONE_STATUS.running){
         if(PHONE_WS && PHONE_WS.readyState === WebSocket.OPEN){
@@ -2818,6 +3106,7 @@ function render(){
   syncSettingsForms(false);
   renderChain();
   renderGrid();
+  renderPinnedPhoneApps();
   renderEvents();
   if(typeof STATE.active_connections === 'number' && DIAGNOSTIC_TAB !== 'connections'){
     const el = $('#connsCount');
@@ -3477,22 +3766,34 @@ function fitPhoneCanvas(){
   const h = PHONE_VIDEO_H || PHONE_STATUS.height || 0;
   const portrait = !!(PHONE_STATUS.running && w > 0 && h > 0 && h >= w);
   layout.classList.toggle('is-portrait', portrait);
-  if(!w || !h) return;
+  if(!w || !h || vp.clientWidth <= 0 || vp.clientHeight <= 0) return;
   const style = getComputedStyle(vp);
-  const padX = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) + 12;
-  const padY = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) + 12;
+  const extra = IS_PHONE_POPOUT ? 8 : 12;
+  const padX = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) + extra;
+  const padY = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) + extra;
   const stacked = window.innerWidth <= 960;
   let availW;
-  if(portrait && !stacked && layout.clientWidth > 0){
+  if(!IS_PHONE_POPOUT && portrait && !stacked && layout.clientWidth > 0){
     // Cap portrait stage so the right control rail keeps >= 280px without circular viewport sizing
     availW = Math.max(180, layout.clientWidth - 280 - 18 - padX);
   }else{
-    availW = Math.max(120, vp.clientWidth - padX);
+    availW = Math.max(60, vp.clientWidth - padX);
   }
-  const availH = Math.max(160, vp.clientHeight - padY);
-  const scale = Math.min(availW / w, availH / h);
-  const targetW = Math.max(1, Math.floor(w * scale)) + 'px';
-  const targetH = Math.max(1, Math.floor(h * scale)) + 'px';
+  const availH = Math.max(60, vp.clientHeight - padY);
+  const dpr = window.devicePixelRatio || 1;
+  const nativeCssW = w / dpr;
+  const nativeCssH = h / dpr;
+  let drawW, drawH;
+  if(IS_PHONE_POPOUT && nativeCssW <= availW && nativeCssH <= availH && (availW - nativeCssW) <= 24 && (availH - nativeCssH) <= 24){
+    drawW = Math.round(nativeCssW);
+    drawH = Math.round(nativeCssH);
+  }else{
+    const scale = Math.min(availW / w, availH / h);
+    drawW = Math.max(1, Math.floor(w * scale));
+    drawH = Math.max(1, Math.floor(h * scale));
+  }
+  const targetW = drawW + 'px';
+  const targetH = drawH + 'px';
   if(canvas.style.width !== targetW) canvas.style.width = targetW;
   if(canvas.style.height !== targetH) canvas.style.height = targetH;
 }
@@ -3626,7 +3927,7 @@ function connectPhoneWs(){
   }
   clearTimeout(PHONE_RECONNECT_TIMER);
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${proto}//${location.host}/api/phone/ws?token=${encodeURIComponent(TOKEN)}`;
+  const url = `${proto}//${location.host}/api/phone/ws?token=${encodeURIComponent(TOKEN)}&session=${encodeURIComponent(PHONE_SESSION_ID)}`;
   const ws = new WebSocket(url);
   ws.binaryType = 'arraybuffer';
   PHONE_WS = ws;
@@ -3642,6 +3943,10 @@ function connectPhoneWs(){
         const msg = JSON.parse(e.data);
         if(msg.type === 'status'){
           applyPhoneStatus(msg);
+        }else if(msg.type === 'clipboard' && typeof msg.text === 'string'){
+          handleDeviceClipboard(msg.text);
+        }else if(msg.type === 'ack_clipboard'){
+          onPhoneAckClipboard();
         }else if(msg.type === 'error' && msg.message){
           toast(msg.message, {type:'err'});
         }
@@ -3662,9 +3967,8 @@ function connectPhoneWs(){
 }
 function applyPhoneStatus(st){
   if(!st || typeof st !== 'object') return;
-  const wasRunning = PHONE_STATUS.running;
   PHONE_STATUS = {...PHONE_STATUS, ...st};
-  if(st.width && st.height && (!PHONE_VIDEO_W || !wasRunning)){
+  if(st.width && st.height && (st.width !== PHONE_VIDEO_W || st.height !== PHONE_VIDEO_H)){
     PHONE_VIDEO_W = st.width;
     PHONE_VIDEO_H = st.height;
     const canvas = $('#phoneCanvas');
@@ -3674,6 +3978,8 @@ function applyPhoneStatus(st){
     }
   }
   if(!PHONE_STATUS.running){
+    if(PHONE_RECORDER && PHONE_RECORDER.state === 'recording') stopPhoneRecording();
+    resetPhoneDirectInputQueue();
     PHONE_VIDEO_W = 0;
     PHONE_VIDEO_H = 0;
     PHONE_FPS_STAMPS = [];
@@ -3698,6 +4004,9 @@ function updatePhoneMetricsUi(){
   const fpsText = s.running ? `${fpsNow} FPS（上限 ${s.max_fps || 60}）` : '—';
   if($('#phoneStatSize')) $('#phoneStatSize').textContent = sizeText;
   if($('#phoneStatFps')) $('#phoneStatFps').textContent = fpsText;
+  if(IS_PHONE_POPOUT && $('#phonePopoutDim')){
+    $('#phonePopoutDim').textContent = (w && h) ? `${w}×${h}` : (s.running ? '连接中…' : '已断开');
+  }
   if(s.running && $('#phoneMetaSub')){
     const dev = s.device_name || s.serial || 'Android 设备';
     const offTag = s.screen_off ? ' · 实体屏已熄灭' : '';
@@ -3715,6 +4024,8 @@ function renderPhoneUi(){
   $('#navPhoneLive').hidden = !running;
   $('#phoneEmpty').hidden = running;
   $('#phoneLiveWrap').hidden = !running;
+  $('#btnPhoneShot').hidden = !running;
+  $('#btnPhoneRec').hidden = !running;
   $('#btnPhoneReset').hidden = !running;
 
   const toggleBtn = $('#btnPhoneToggle');
@@ -3760,10 +4071,17 @@ function renderPhoneUi(){
   screenOffBtn.classList.toggle('is-off', running && !!s.screen_off);
   screenOffBtn.textContent = running && s.screen_off ? '手机已息屏（点此亮屏）' : '熄灭手机屏（息屏操控）';
 
-  for(const id of ['#btnPhonePower','#btnPhoneNotif','#btnPhoneVolUp','#btnPhoneVolDown','#btnPhoneRotate','#btnPhoneCollapse','#btnPhonePaste','#btnPhoneCopy','#btnPhoneBack','#btnPhoneHome','#btnPhoneRecents']){
+  for(const id of ['#btnPhonePower','#btnPhoneNotif','#btnPhoneVolUp','#btnPhoneVolDown','#btnPhoneRotate','#btnPhoneCollapse','#btnPhonePaste','#btnPhoneCopy','#btnPhoneClipPull','#btnPhoneBack','#btnPhoneHome','#btnPhoneRecents']){
     const el = $(id);
     if(el) el.disabled = !running;
   }
+  const hasDevice = !!(running || targetDevice);
+  const upBtn = $('#btnPhoneUpload');
+  if(upBtn){
+    upBtn.disabled = !hasDevice || PHONE_UPLOADING;
+    upBtn.textContent = PHONE_UPLOADING ? '传输中…' : '传文件 / APK';
+  }
+  renderPhoneDeviceInfo();
 
   if(s.quality && $('#phoneQuality').value !== String(s.quality) && document.activeElement !== $('#phoneQuality')){
     $('#phoneQuality').value = String(s.quality);
@@ -3778,10 +4096,490 @@ function renderPhoneUi(){
   $('#phoneStatDevice').textContent = statDev;
   $('#phoneStatDevice').title = statDev;
   updatePhoneMetricsUi();
+  renderActiveVirtualSessions();
+  if(IS_PHONE_POPOUT){
+    const label = s.app_name || s.package || '手机应用';
+    const vw = PHONE_VIDEO_W || s.width || 0;
+    const vh = PHONE_VIDEO_H || s.height || 0;
+    document.title = `${label} · DroidBridge 手机应用`;
+    if($('#phonePopoutTitle')) $('#phonePopoutTitle').textContent = label;
+    if($('#phonePopoutDim')) $('#phonePopoutDim').textContent = (vw && vh) ? `${vw}×${vh}` : (running ? '连接中…' : '已断开');
+    if($('#phonePopoutDot')) $('#phonePopoutDot').style.background = running ? 'hsl(var(--green))' : 'hsl(var(--subtle))';
+    const popSel = $('#popPresetSelect');
+    if(popSel){
+      const customOpt = popSel.querySelector('option[value="custom"]');
+      if(customOpt) customOpt.hidden = s.preset !== 'custom';
+      if(s.preset && popSel.value !== s.preset && document.activeElement !== popSel) popSel.value = s.preset;
+      popSel.disabled = !running || PHONE_BUSY;
+    }
+    if($('#btnPopMatch')) $('#btnPopMatch').disabled = !running || PHONE_BUSY;
+    if($('#btnPopFit')) $('#btnPopFit').disabled = !running;
+    if(!running){
+      $('#phoneEmptyTitle').textContent = `${label} 已断开`;
+      $('#phoneEmptyDesc').textContent = s.error || '虚拟副屏会话已关闭，可直接关闭此窗口或从主界面重新打开。';
+      $('#btnPhoneConnectHero').hidden = true;
+      $('#btnPhoneGoSettings').hidden = true;
+    }
+  }
+}
+function renderActiveVirtualSessions(){
+  const box = $('#phoneSessionsBox');
+  const listEl = $('#phoneSessionsList');
+  if(!box || !listEl) return;
+  const sessions = (PHONE_STATUS.sessions || (STATE && STATE.phone_sessions) || []).filter(x => x && x.is_virtual && (x.running || x.starting));
+  box.hidden = !sessions.length;
+  if(!sessions.length){ listEl.innerHTML = ''; return; }
+  listEl.innerHTML = sessions.map(sess => `
+    <div class="phone-session-pill">
+      <strong title="${esc(sess.package || sess.session_id)}">${esc(sess.app_name || sess.package || sess.session_id)}</strong>
+      <span class="phone-session-pill-acts">
+        <button type="button" class="btn tiny" data-vfocus="${esc(sess.package || '')}" data-vname="${esc(sess.app_name || '')}" data-vpreset="${esc(sess.preset || 'phone')}">打开</button>
+        <button type="button" class="btn tiny danger" data-vstop="${esc(sess.session_id)}">关闭</button>
+      </span>
+    </div>
+  `).join('');
+}
+function renderPinnedPhoneApps(){
+  const wrap = $('#pinnedPhoneAppsWrap');
+  const grid = $('#pinnedPhoneAppsGrid');
+  if(!wrap || !grid || !STATE) return;
+  const pinned = Array.isArray(STATE.phone_apps) ? STATE.phone_apps : [];
+  wrap.hidden = !pinned.length;
+  if(!pinned.length){ grid.innerHTML = ''; return; }
+  const activeMap = new Map();
+  for(const sess of (PHONE_STATUS.sessions || STATE.phone_sessions || [])){
+    if(sess && sess.is_virtual && sess.package && (sess.running || sess.starting)){
+      activeMap.set(sess.package, sess);
+    }
+  }
+  grid.innerHTML = pinned.map(item => {
+    const sess = activeMap.get(item.package);
+    const busy = PHONE_APP_OPENING === item.package;
+    const presetLabel = VD_PRESET_LABELS[item.preset] || '竖屏 720p';
+    return `<div class="phone-app-card" data-pkg="${esc(item.package)}">
+      <div class="phone-app-card-left">
+        <span class="phone-app-avatar" style="background:${colorOf(item.name || item.package)}">${esc(initial(item.name || item.package))}</span>
+        <div class="phone-app-meta">
+          <div class="phone-app-name" title="${esc(item.package)}">${esc(item.name || item.package)}</div>
+          <div class="phone-app-sub">
+            <span>Android · ${esc(presetLabel)}</span>
+            ${sess ? '<span class="badge good">运行中</span>' : ''}
+          </div>
+        </div>
+      </div>
+      <div class="phone-app-actions">
+        <button type="button" class="btn tiny primary" data-popen="${esc(item.package)}" data-pname="${esc(item.name || item.package)}" data-ppreset="${esc(item.preset || 'phone')}" ${busy ? 'disabled' : ''}>${busy ? '启动中…' : (sess ? '聚焦' : '打开')}</button>
+        <button type="button" class="btn tiny" data-punpin="${esc(item.package)}" title="从应用台移除此快捷入口">移除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderPhoneAppsModal(){
+  const listEl = $('#phoneAppList');
+  if(!listEl) return;
+  if(PHONE_APPS_LOADING){
+    listEl.innerHTML = '<div class="phone-picker-empty">正在读取手机已安装应用（约 1-2 秒）…</div>';
+    return;
+  }
+  const pinnedSet = new Set(((STATE && STATE.phone_apps) || []).map(x => x.package));
+  const runningSet = new Set((PHONE_STATUS.sessions || (STATE && STATE.phone_sessions) || []).filter(x => x && x.is_virtual && x.running).map(x => x.package));
+  const q = PHONE_APP_QUERY.toLowerCase();
+  const rows = PHONE_APPS_LIST.filter(a => {
+    if(PHONE_APP_FILTER === 'user' && a.system) return false;
+    if(q && !a.name.toLowerCase().includes(q) && !a.package.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if(!rows.length){
+    listEl.innerHTML = `<div class="phone-picker-empty">${PHONE_APPS_LIST.length ? '当前筛选下没有匹配的手机应用' : '未读取到手机应用，请确认手机已通过 USB 连接'}</div>`;
+    return;
+  }
+  listEl.innerHTML = rows.slice(0, 120).map(a => {
+    const isPinned = pinnedSet.has(a.package);
+    const isRun = runningSet.has(a.package);
+    const busy = PHONE_APP_OPENING === a.package;
+    return `<div class="phone-picker-row">
+      <div class="phone-app-card-left">
+        <span class="phone-app-avatar" style="width:28px;height:28px;font-size:12px;background:${colorOf(a.name)}">${esc(initial(a.name))}</span>
+        <div class="phone-app-meta">
+          <div class="phone-app-name">${esc(a.name)} ${isRun ? '<span class="badge good">运行中</span>' : ''}</div>
+          <div class="phone-picker-pkg">${esc(a.package)}</div>
+        </div>
+      </div>
+      <div class="phone-app-actions">
+        <button type="button" class="btn tiny" data-mpin="${esc(a.package)}" data-mname="${esc(a.name)}">${isPinned ? '已钉住' : '钉到应用台'}</button>
+        <button type="button" class="btn tiny primary" data-mopen="${esc(a.package)}" data-mname="${esc(a.name)}" ${busy ? 'disabled' : ''}>${busy ? '启动中…' : '独立窗口'}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function loadPhoneApps(forceRefresh=false){
+  if(PHONE_APPS_LOADING) return;
+  PHONE_APPS_LOADING = true;
+  renderPhoneAppsModal();
+  try{
+    const serial = PHONE_STATUS.serial || SELECTED_ADB_SERIAL || '';
+    const qs = new URLSearchParams({serial, refresh: forceRefresh ? '1' : '0'}).toString();
+    const r = await api('/api/phone/apps?' + qs);
+    if(!r || !r.ok){
+      toast((r && r.error) || '读取手机应用列表失败', {type:'err'});
+      PHONE_APPS_LIST = [];
+    }else{
+      PHONE_APPS_LIST = Array.isArray(r.apps) ? r.apps : [];
+      if(Array.isArray(r.sessions)) PHONE_STATUS.sessions = r.sessions;
+    }
+  }catch(e){
+    toast('读取手机应用列表失败', {type:'err'});
+    PHONE_APPS_LIST = [];
+  }finally{
+    PHONE_APPS_LOADING = false;
+    renderPhoneAppsModal();
+    renderActiveVirtualSessions();
+    renderPinnedPhoneApps();
+  }
+}
+function openPhoneAppModal(){
+  $('#phoneAppModal').hidden = false;
+  $('#phoneAppSearch').focus();
+  if(!PHONE_APPS_LIST.length) loadPhoneApps(false);
+  else renderPhoneAppsModal();
+}
+function closePhoneAppModal(){
+  $('#phoneAppModal').hidden = true;
+}
+async function openPhoneAppWindow(pkg, name, presetOverride){
+  if(!pkg || PHONE_APP_OPENING) return;
+  const preset = presetOverride || ($('#phoneAppPreset') && $('#phoneAppPreset').value) || 'phone';
+  const ime_policy = ($('#phoneAppImePolicy') && $('#phoneAppImePolicy').value) || 'local';
+  PHONE_APP_OPENING = pkg;
+  renderPhoneAppsModal();
+  renderPinnedPhoneApps();
+  try{
+    const serial = PHONE_STATUS.serial || SELECTED_ADB_SERIAL || '';
+    const r = await api('/api/phone/app/open', {serial, package: pkg, name: name || pkg, preset, ime_policy, max_fps: 60, popout: true});
+    if(!r || !r.ok){
+      toast((r && r.error) || `打开 ${name || pkg} 失败`, {type:'err'});
+      log(`独立窗口打开手机应用失败 (${pkg}): ${(r && r.error) || ''}`, 'err');
+      return;
+    }
+    if(r.status && Array.isArray(r.status.sessions)) PHONE_STATUS.sessions = r.status.sessions;
+    toast(r.focused_existing ? `已切换到 ${name || pkg} 窗口` : `已在独立窗口打开 ${name || pkg}`, {type:'ok'});
+    log(`独立窗口打开手机应用：${name || pkg} (${pkg} · ${preset})`, 'ok');
+    refresh();
+  }catch(e){
+    toast(`打开 ${name || pkg} 失败: ` + e, {type:'err'});
+  }finally{
+    PHONE_APP_OPENING = '';
+    renderPhoneAppsModal();
+    renderActiveVirtualSessions();
+    renderPinnedPhoneApps();
+  }
+}
+async function togglePinPhoneApp(pkg, name, presetOverride){
+  const pinned = ((STATE && STATE.phone_apps) || []).some(x => x.package === pkg);
+  const preset = presetOverride || ($('#phoneAppPreset') && $('#phoneAppPreset').value) || 'phone';
+  try{
+    const r = pinned
+      ? await api('/api/phone/app/unpin', {package: pkg})
+      : await api('/api/phone/app/pin', {package: pkg, name: name || pkg, preset, max_fps: 60});
+    if(!r || !r.ok){ toast((r && r.error) || '操作失败', {type:'err'}); return; }
+    if(r.state) STATE = r.state;
+    render();
+    renderPhoneAppsModal();
+    toast(pinned ? `已取消固定 ${name || pkg}` : `已将 ${name || pkg} 钉到应用台`, {type:'ok'});
+  }catch(e){
+    toast('操作失败', {type:'err'});
+  }
+}
+async function stopPhoneVirtualSession(sid){
+  if(!sid) return;
+  try{
+    const r = await api('/api/phone/stop', {session: sid});
+    if(r && r.status && Array.isArray(r.status.sessions)) PHONE_STATUS.sessions = r.status.sessions;
+    renderActiveVirtualSessions();
+    renderPinnedPhoneApps();
+    renderPhoneAppsModal();
+    toast('已关闭虚拟应用窗口');
+  }catch(e){
+    toast('关闭虚拟应用窗口失败', {type:'err'});
+  }
+}
+function renderPhoneDeviceInfo(){
+  const info = PHONE_DEVICE_INFO;
+  const batEl = $('#phoneStatBattery');
+  const netEl = $('#phoneStatNet');
+  const clashBtn = $('#btnPhoneLaunchClash');
+  const onlineDevices = (ADB_STATE && ADB_STATE.devices || []).filter(d => d.state === 'device');
+  const hasDevice = !!(PHONE_STATUS.running || onlineDevices.length);
+  if(batEl){
+    if(info && info.battery && info.battery.level != null){
+      const b = info.battery;
+      const stateTag = b.full ? '已充满' : (b.charging ? '充电中' : (b.plugged ? '已插电' : ''));
+      const tempTag = b.temp_c != null ? `${b.temp_c}°C` : '';
+      batEl.textContent = [`${b.level}%`, stateTag, tempTag].filter(Boolean).join(' · ');
+    }else{
+      batEl.textContent = '—';
+    }
+  }
+  if(netEl){
+    if(info && info.network){
+      netEl.textContent = info.network.ip ? `${info.network.type} · ${info.network.ip}` : info.network.type;
+    }else{
+      netEl.textContent = '—';
+    }
+  }
+  if(clashBtn){
+    const apps = (info && Array.isArray(info.proxy_apps)) ? info.proxy_apps : [];
+    const primary = apps[0] || null;
+    if(primary){
+      clashBtn.textContent = `打开 ${primary.label}`;
+      clashBtn.dataset.pkg = primary.package;
+      clashBtn.dataset.label = primary.label;
+      clashBtn.disabled = !hasDevice;
+      clashBtn.title = `在手机上一键打开 ${primary.label} (${primary.package})`;
+    }else{
+      clashBtn.textContent = '打开 Clash';
+      clashBtn.dataset.pkg = '';
+      clashBtn.dataset.label = '';
+      clashBtn.disabled = true;
+      clashBtn.title = hasDevice ? '手机上未检测到常见 Clash / 代理应用' : '未检测到在线设备';
+    }
+  }
+}
+async function loadPhoneDeviceInfo(){
+  try{
+    const serial = PHONE_STATUS.serial || SELECTED_ADB_SERIAL || '';
+    const qs = serial ? `?serial=${encodeURIComponent(serial)}` : '';
+    const r = await api('/api/phone/info' + qs);
+    if(r && r.ok){
+      PHONE_DEVICE_INFO = r;
+    }else{
+      PHONE_DEVICE_INFO = null;
+    }
+  }catch(e){
+    PHONE_DEVICE_INFO = null;
+  }
+  renderPhoneDeviceInfo();
+}
+function handleDeviceClipboard(text){
+  const val = String(text || '');
+  if(!val) return;
+  PHONE_CLIP_TEXT = val;
+  const box = $('#phoneClipPreview');
+  if(box){
+    box.textContent = val;
+    box.title = val;
+    box.classList.remove('empty');
+  }
+  const copyBtn = $('#btnPhoneClipCopy');
+  if(copyBtn) copyBtn.disabled = false;
+  if(PHONE_CLIP_AUTO && navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(val).then(() => {
+      toast('已自动同步手机剪贴板', {type:'ok'});
+    }).catch(() => {
+      toast('收到手机剪贴板（点右侧「复制」写入电脑）');
+    });
+  }else{
+    toast('收到手机剪贴板');
+  }
+}
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+function phoneFileStamp(){
+  const d = new Date();
+  const dev = (PHONE_STATUS.device_name || PHONE_STATUS.serial || 'phone').replace(/[^A-Za-z0-9_-]+/g, '_');
+  return `DroidBridge_${dev}_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+function capturePhoneScreenshot(){
+  const canvas = $('#phoneCanvas');
+  if(!PHONE_STATUS.running || !canvas || !canvas.width || !canvas.height){
+    toast('当前没有可截屏的手机画面', {type:'err'});
+    return;
+  }
+  canvas.toBlob(blob => {
+    if(!blob){ toast('生成截屏失败', {type:'err'}); return; }
+    const name = phoneFileStamp() + '.png';
+    downloadBlob(blob, name);
+    toast('已保存手机截屏', {type:'ok'});
+    log(`已保存手机截屏：${name}`, 'ok');
+  }, 'image/png');
+}
+function updatePhoneRecButton(){
+  const active = !!(PHONE_RECORDER && PHONE_RECORDER.state === 'recording');
+  const sec = active ? Math.max(0, Math.floor((Date.now() - PHONE_REC_STARTED) / 1000)) : 0;
+  for(const btn of [$('#btnPhoneRec'), $('#btnPopRec')]){
+    if(!btn) continue;
+    btn.classList.toggle('is-rec', active);
+    btn.textContent = active ? (btn.id === 'btnPopRec' ? `停 ${formatDuration(sec)}` : `停止录屏 ${formatDuration(sec)}`) : '录屏';
+  }
+}
+function stopPhoneRecording(){
+  clearInterval(PHONE_REC_TIMER);
+  PHONE_REC_TIMER = null;
+  if(PHONE_RECORDER && PHONE_RECORDER.state !== 'inactive'){
+    try{ PHONE_RECORDER.stop(); }catch(e){}
+  }
+  updatePhoneRecButton();
+}
+function togglePhoneRecording(){
+  if(PHONE_RECORDER && PHONE_RECORDER.state === 'recording'){
+    stopPhoneRecording();
+    return;
+  }
+  const canvas = $('#phoneCanvas');
+  if(!PHONE_STATUS.running || !canvas || !canvas.width){
+    toast('请先连接手机屏幕', {type:'err'});
+    return;
+  }
+  if(typeof canvas.captureStream !== 'function' || typeof MediaRecorder === 'undefined'){
+    toast('当前浏览器不支持网页录屏', {type:'err'});
+    return;
+  }
+  try{
+    const stream = canvas.captureStream(30);
+    const mimeCandidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    const mimeType = mimeCandidates.find(m => typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(m)) || '';
+    const rec = mimeType ? new MediaRecorder(stream, {mimeType}) : new MediaRecorder(stream);
+    PHONE_REC_CHUNKS = [];
+    PHONE_RECORDER = rec;
+    PHONE_REC_STARTED = Date.now();
+    rec.ondataavailable = ev => { if(ev.data && ev.data.size) PHONE_REC_CHUNKS.push(ev.data); };
+    rec.onstop = () => {
+      clearInterval(PHONE_REC_TIMER);
+      PHONE_REC_TIMER = null;
+      const chunks = PHONE_REC_CHUNKS;
+      PHONE_REC_CHUNKS = [];
+      if(PHONE_RECORDER === rec) PHONE_RECORDER = null;
+      updatePhoneRecButton();
+      if(chunks.length){
+        const blob = new Blob(chunks, {type: rec.mimeType || 'video/webm'});
+        const name = phoneFileStamp() + '.webm';
+        downloadBlob(blob, name);
+        toast('已保存手机录屏', {type:'ok'});
+        log(`已保存手机录屏：${name}`, 'ok');
+      }
+    };
+    rec.start(500);
+    updatePhoneRecButton();
+    PHONE_REC_TIMER = setInterval(updatePhoneRecButton, 500);
+    toast('开始录制手机画面', {type:'ok'});
+  }catch(e){
+    PHONE_RECORDER = null;
+    updatePhoneRecButton();
+    toast('启动录屏失败: ' + e, {type:'err'});
+  }
+}
+async function launchPhoneClash(){
+  const btn = $('#btnPhoneLaunchClash');
+  const pkg = btn && btn.dataset.pkg;
+  const label = (btn && btn.dataset.label) || pkg;
+  if(!pkg) return;
+  btn.disabled = true;
+  try{
+    const serial = PHONE_STATUS.serial || SELECTED_ADB_SERIAL || '';
+    const r = await api('/api/phone/launch-app', {serial, package: pkg});
+    if(!r || !r.ok){
+      toast((r && r.error) || `打开 ${label} 失败`, {type:'err'});
+      return;
+    }
+    toast(`已在手机打开 ${label}`, {type:'ok'});
+    log(`已在手机打开 ${label} (${pkg})`, 'ok');
+  }catch(e){
+    toast(`打开 ${label} 失败`, {type:'err'});
+  }finally{
+    renderPhoneDeviceInfo();
+  }
+}
+async function uploadPhoneFiles(fileList){
+  const files = Array.from(fileList || []).filter(Boolean);
+  if(!files.length || PHONE_UPLOADING) return;
+  PHONE_UPLOADING = true;
+  renderPhoneUi();
+  const serial = PHONE_STATUS.serial || SELECTED_ADB_SERIAL || '';
+  try{
+    for(let i = 0; i < files.length; i++){
+      const file = files[i];
+      const isApk = /\.apk$/i.test(file.name);
+      toast(isApk ? `正在安装 ${file.name}…` : `正在发送 ${file.name}（${i+1}/${files.length}）…`, {duration: 10000});
+      const qs = new URLSearchParams({name: file.name, serial, action: 'auto'}).toString();
+      const resp = await fetch('/api/phone/upload?' + qs, {
+        method: 'POST',
+        headers: {'X-DroidBridge-Token': TOKEN, 'Content-Type': 'application/octet-stream'},
+        body: file,
+      });
+      const r = await resp.json();
+      if(!r || !r.ok){
+        toast((r && r.error) || `传输 ${file.name} 失败`, {type:'err'});
+        log(`发送手机文件失败 (${file.name}): ${(r && r.error) || ''}`, 'err');
+      }else{
+        toast(r.message || `已发送 ${file.name}`, {type:'ok'});
+        log(r.message || `已发送 ${file.name}`, 'ok');
+        if(r.mode === 'install') loadPhoneDeviceInfo();
+      }
+    }
+  }catch(e){
+    toast('发送文件失败: ' + e, {type:'err'});
+    log('发送手机文件失败: ' + e, 'err');
+  }finally{
+    PHONE_UPLOADING = false;
+    renderPhoneUi();
+  }
+}
+function triggerPhonePinch(pt, zoomIn){
+  if(PHONE_PINCHING || !PHONE_STATUS.running || !pt) return;
+  PHONE_PINCHING = true;
+  const w = pt.width, h = pt.height;
+  const minDim = Math.min(w, h);
+  const margin = Math.max(20, Math.round(minDim * 0.18));
+  const cx = Math.max(margin, Math.min(w - 1 - margin, pt.x));
+  const cy = Math.max(margin, Math.min(h - 1 - margin, pt.y));
+  const r0 = Math.max(18, Math.round(minDim * (zoomIn ? 0.08 : 0.22)));
+  const r1 = Math.max(18, Math.round(minDim * (zoomIn ? 0.22 : 0.08)));
+  const clampX = v => Math.max(0, Math.min(w - 1, Math.round(v)));
+  const clampY = v => Math.max(0, Math.min(h - 1, Math.round(v)));
+  const diag = 0.7071;
+  const sendPair = (action, r) => {
+    const dx = r * diag, dy = r * diag;
+    sendPhoneWs({type:'touch', action, pointer_id:100, x:clampX(cx - dx), y:clampY(cy - dy), width:w, height:h});
+    sendPhoneWs({type:'touch', action, pointer_id:101, x:clampX(cx + dx), y:clampY(cy + dy), width:w, height:h});
+  };
+  sendPair('down', r0);
+  const steps = 5;
+  let step = 1;
+  const tick = () => {
+    if(!PHONE_STATUS.running){
+      PHONE_PINCHING = false;
+      return;
+    }
+    const r = r0 + (r1 - r0) * (step / steps);
+    sendPair('move', r);
+    if(step < steps){
+      step += 1;
+      setTimeout(tick, 20);
+    }else{
+      setTimeout(() => {
+        if(PHONE_STATUS.running){
+          const dx = r1 * diag, dy = r1 * diag;
+          sendPhoneWs({type:'touch', action:'up', pointer_id:101, x:clampX(cx + dx), y:clampY(cy + dy), width:w, height:h});
+          sendPhoneWs({type:'touch', action:'up', pointer_id:100, x:clampX(cx - dx), y:clampY(cy - dy), width:w, height:h});
+        }
+        PHONE_PINCHING = false;
+      }, 20);
+    }
+  };
+  setTimeout(tick, 20);
 }
 async function loadPhoneStatus(){
   try{
-    const r = await api('/api/phone/status');
+    const qs = PHONE_SESSION_ID && PHONE_SESSION_ID !== 'main' ? `?session=${encodeURIComponent(PHONE_SESSION_ID)}` : '';
+    const r = await api('/api/phone/status' + qs);
     if(r && r.ok) applyPhoneStatus(r);
   }catch(e){}
 }
@@ -3810,6 +4608,7 @@ async function startPhoneMirror(overrideOpts){
     }
     if(r.status) applyPhoneStatus(r.status);
     connectPhoneWs();
+    loadPhoneDeviceInfo();
     toast('已连接手机屏幕', {type:'ok'});
     log(`手机屏幕已连接：${PHONE_STATUS.device_name || PHONE_STATUS.serial}（${PHONE_STATUS.width}×${PHONE_STATUS.height}）`, 'ok');
   }catch(e){
@@ -3827,7 +4626,7 @@ async function stopPhoneMirror(){
   renderPhoneUi();
   try{
     closePhoneWs();
-    const r = await api('/api/phone/stop', {});
+    const r = await api('/api/phone/stop', {session: PHONE_SESSION_ID});
     if(r && r.status) applyPhoneStatus(r.status);
     else applyPhoneStatus({running:false, screen_off:false, width:0, height:0, error:''});
     toast('已断开手机屏幕');
@@ -3874,31 +4673,159 @@ function sendPhoneClipboard(paste){
     toast('已写入手机剪贴板', {type:'ok'});
   }
 }
+let PHONE_DIRECT_PC_IME = true;
+let PHONE_DIRECT_COMPOSING = false;
+let PHONE_PASTE_BUF = '';
+let PHONE_PASTE_FLUSH_TIMER = null;
+let PHONE_PASTE_INFLIGHT = false;
+let PHONE_PASTE_SETTLE_TIMER = null;
+let PHONE_PENDING_KEYS = [];
+
+function resetPhoneDirectInputQueue(){
+  clearTimeout(PHONE_PASTE_FLUSH_TIMER);
+  clearTimeout(PHONE_PASTE_SETTLE_TIMER);
+  PHONE_PASTE_FLUSH_TIMER = null;
+  PHONE_PASTE_SETTLE_TIMER = null;
+  PHONE_PASTE_BUF = '';
+  PHONE_PASTE_INFLIGHT = false;
+  PHONE_PENDING_KEYS = [];
+}
+function onPhoneAckClipboard(){
+  if(!PHONE_PASTE_INFLIGHT) return;
+  clearTimeout(PHONE_PASTE_SETTLE_TIMER);
+  PHONE_PASTE_SETTLE_TIMER = setTimeout(() => {
+    PHONE_PASTE_INFLIGHT = false;
+    drainPhoneInputQueue();
+  }, 35);
+}
+function drainPhoneInputQueue(){
+  clearTimeout(PHONE_PASTE_FLUSH_TIMER);
+  PHONE_PASTE_FLUSH_TIMER = null;
+  if(!PHONE_STATUS.running){
+    resetPhoneDirectInputQueue();
+    return;
+  }
+  if(PHONE_PASTE_INFLIGHT) return;
+  if(PHONE_PASTE_BUF){
+    const chunk = PHONE_PASTE_BUF;
+    PHONE_PASTE_BUF = '';
+    PHONE_PASTE_INFLIGHT = true;
+    sendPhoneWs({type:'clipboard', text: chunk, paste: true});
+    clearTimeout(PHONE_PASTE_SETTLE_TIMER);
+    PHONE_PASTE_SETTLE_TIMER = setTimeout(() => {
+      PHONE_PASTE_INFLIGHT = false;
+      drainPhoneInputQueue();
+    }, 160);
+    return;
+  }
+  while(PHONE_PENDING_KEYS.length){
+    const cmd = PHONE_PENDING_KEYS.shift();
+    sendPhoneWs(cmd);
+  }
+}
+function queuePhoneDirectText(text, immediate=false){
+  if(!text || !PHONE_STATUS.running) return;
+  if(!PHONE_DIRECT_PC_IME && /^[\x20-\x7e]+$/.test(text)){
+    sendPhoneWs({type:'text', text});
+    return;
+  }
+  PHONE_PASTE_BUF += text;
+  clearTimeout(PHONE_PASTE_FLUSH_TIMER);
+  if(immediate){
+    drainPhoneInputQueue();
+  }else{
+    PHONE_PASTE_FLUSH_TIMER = setTimeout(drainPhoneInputQueue, 60);
+  }
+}
+function queuePhoneControlCmd(cmd){
+  if(!PHONE_STATUS.running || !cmd) return;
+  if(PHONE_PASTE_BUF || PHONE_PASTE_INFLIGHT){
+    PHONE_PENDING_KEYS.push(cmd);
+    drainPhoneInputQueue();
+    return;
+  }
+  sendPhoneWs(cmd);
+}
+function focusPhoneImeProxy(ev){
+  const proxy = $('#phoneImeProxy');
+  const vp = $('#phoneViewport');
+  if(!proxy || !PHONE_STATUS.running) return;
+  if(ev && vp){
+    const r = vp.getBoundingClientRect();
+    const x = Math.max(8, Math.min(Math.max(8, r.width - 24), Math.round(ev.clientX - r.left)));
+    const y = Math.max(8, Math.min(Math.max(8, r.height - 28), Math.round(ev.clientY - r.top)));
+    proxy.style.left = x + 'px';
+    proxy.style.top = y + 'px';
+  }
+  try{ proxy.focus({preventScroll: true}); }catch(err){ proxy.focus(); }
+}
+const PHONE_CTRL_KEY_MAP = {
+  Backspace: 67,
+  Enter: 66,
+  Tab: 61,
+  Delete: 112,
+  ArrowUp: 19,
+  ArrowDown: 20,
+  ArrowLeft: 21,
+  ArrowRight: 22,
+  Home: 122,
+  End: 123,
+};
+function handlePhoneImeProxyKeydown(e){
+  if(!PHONE_STATUS.running) return;
+  if(PHONE_DIRECT_COMPOSING || e.isComposing || e.keyCode === 229) return;
+  if((e.ctrlKey || e.metaKey) && !e.altKey){
+    const k = String(e.key || '').toLowerCase();
+    if(k === 'a'){
+      e.preventDefault(); e.stopPropagation();
+      queuePhoneControlCmd({type:'key', keycode:29, action:'tap', meta:0x3000});
+      return;
+    }
+    if(k === 'c'){
+      e.preventDefault(); e.stopPropagation();
+      queuePhoneControlCmd({type:'key', keycode:31, action:'tap', meta:0x3000});
+      setTimeout(() => sendPhoneWs({type:'get_clipboard'}), 120);
+      return;
+    }
+    if(k === 'x'){
+      e.preventDefault(); e.stopPropagation();
+      queuePhoneControlCmd({type:'key', keycode:52, action:'tap', meta:0x3000});
+      setTimeout(() => sendPhoneWs({type:'get_clipboard'}), 120);
+      return;
+    }
+    if(k === 'z'){
+      e.preventDefault(); e.stopPropagation();
+      queuePhoneControlCmd({type:'key', keycode:54, action:'tap', meta:e.shiftKey ? 0x3041 : 0x3000});
+      return;
+    }
+    return;
+  }
+  if(e.altKey) return;
+  if(e.key === 'Escape'){
+    e.preventDefault();
+    e.stopPropagation();
+    queuePhoneControlCmd({type:'action', name:'back_or_screen_on'});
+    return;
+  }
+  if(Object.hasOwn(PHONE_CTRL_KEY_MAP, e.key)){
+    e.preventDefault();
+    e.stopPropagation();
+    queuePhoneControlCmd({type:'key', keycode:PHONE_CTRL_KEY_MAP[e.key], action:'tap'});
+  }
+}
 function handlePhoneCanvasKeydown(e){
   if(!PHONE_STATUS.running) return;
   if(e.ctrlKey || e.metaKey || e.altKey) return;
-  const keyMap = {
-    Backspace: 67,
-    Enter: 66,
-    Tab: 61,
-    Delete: 112,
-    ArrowUp: 19,
-    ArrowDown: 20,
-    ArrowLeft: 21,
-    ArrowRight: 22,
-    Home: 122,
-    End: 123,
-  };
   if(e.key === 'Escape'){
     e.preventDefault();
     e.stopPropagation();
     sendPhoneWs({type:'action', name:'back_or_screen_on'});
     return;
   }
-  if(Object.hasOwn(keyMap, e.key)){
+  if(Object.hasOwn(PHONE_CTRL_KEY_MAP, e.key)){
     e.preventDefault();
     e.stopPropagation();
-    sendPhoneWs({type:'key', keycode:keyMap[e.key], action:'tap'});
+    sendPhoneWs({type:'key', keycode:PHONE_CTRL_KEY_MAP[e.key], action:'tap'});
     return;
   }
   if(e.key.length === 1 && /^[\x20-\x7e]$/.test(e.key)){
@@ -4249,6 +5176,237 @@ $('#btnSettingsQuit').onclick = quitService;
 $('#btnPhoneToggle').onclick = () => { if(PHONE_STATUS.running) stopPhoneMirror(); else startPhoneMirror(); };
 $('#btnPhoneConnectHero').onclick = () => startPhoneMirror();
 $('#btnPhoneGoSettings').onclick = () => setActiveView('settings');
+$('#btnPhoneOpenApps').onclick = openPhoneAppModal;
+$('#btnShelfAddPhoneApp').onclick = openPhoneAppModal;
+$('#btnPhoneAppModalClose').onclick = closePhoneAppModal;
+$('#phoneAppModal').onclick = e => { if(e.target.id === 'phoneAppModal') closePhoneAppModal(); };
+$('#btnPhoneAppsRefresh').onclick = () => loadPhoneApps(true);
+$('#phoneAppSearch').addEventListener('input', e => {
+  PHONE_APP_QUERY = e.target.value.trim();
+  renderPhoneAppsModal();
+});
+document.querySelectorAll('#phoneAppFilterChips .chip').forEach(chip => {
+  chip.onclick = () => {
+    PHONE_APP_FILTER = chip.dataset.pfilter || 'user';
+    document.querySelectorAll('#phoneAppFilterChips .chip').forEach(c => c.classList.toggle('active', c === chip));
+    renderPhoneAppsModal();
+  };
+});
+$('#phoneAppList').addEventListener('click', e => {
+  const openBtn = e.target.closest('button[data-mopen]');
+  if(openBtn){ openPhoneAppWindow(openBtn.dataset.mopen, openBtn.dataset.mname); return; }
+  const pinBtn = e.target.closest('button[data-mpin]');
+  if(pinBtn){ togglePinPhoneApp(pinBtn.dataset.mpin, pinBtn.dataset.mname); }
+});
+$('#pinnedPhoneAppsGrid').addEventListener('click', e => {
+  const openBtn = e.target.closest('button[data-popen]');
+  if(openBtn){ openPhoneAppWindow(openBtn.dataset.popen, openBtn.dataset.pname, openBtn.dataset.ppreset); return; }
+  const unpinBtn = e.target.closest('button[data-punpin]');
+  if(unpinBtn){ togglePinPhoneApp(unpinBtn.dataset.punpin, unpinBtn.dataset.punpin); }
+});
+$('#phoneSessionsList').addEventListener('click', e => {
+  const focusBtn = e.target.closest('button[data-vfocus]');
+  if(focusBtn){ openPhoneAppWindow(focusBtn.dataset.vfocus, focusBtn.dataset.vname, focusBtn.dataset.vpreset); return; }
+  const stopBtn = e.target.closest('button[data-vstop]');
+  if(stopBtn){ stopPhoneVirtualSession(stopBtn.dataset.vstop); }
+});
+async function fitPopoutWindowToScreen(explicitW, explicitH){
+  if(!IS_PHONE_POPOUT) return;
+  let targetW = Number(explicitW) || 0;
+  let targetH = Number(explicitH) || 0;
+  if(!targetW || !targetH){
+    const vw = PHONE_VIDEO_W || PHONE_STATUS.width || 0;
+    const vh = PHONE_VIDEO_H || PHONE_STATUS.height || 0;
+    if(!vw || !vh) return;
+    const chromeW = Math.max(16, (window.outerWidth || 0) - (window.innerWidth || 0));
+    const chromeH = Math.max(38, (window.outerHeight || 0) - (window.innerHeight || 0));
+    const barH = ($('#phonePopoutBar') && $('#phonePopoutBar').offsetHeight) || 38;
+    const innerPad = 14;
+    const canvas = $('#phoneCanvas');
+    const rect = canvas ? canvas.getBoundingClientRect() : null;
+    let cw = Math.round((rect && rect.width > 120) ? rect.width : (vw >= vh ? 960 : 396));
+    let ch = Math.round(cw * vh / vw);
+    const maxW = Math.max(320, Math.floor(((window.screen && window.screen.availWidth) || 1920) * 0.9) - chromeW - innerPad);
+    const maxH = Math.max(320, Math.floor(((window.screen && window.screen.availHeight) || 1040) * 0.9) - chromeH - barH - innerPad);
+    if(cw > maxW || ch > maxH){
+      const k = Math.min(maxW / cw, maxH / ch);
+      cw = Math.max(240, Math.floor(cw * k));
+      ch = Math.max(200, Math.floor(ch * k));
+    }
+    targetW = Math.max(320, cw + innerPad + chromeW);
+    targetH = Math.max(320, ch + innerPad + barH + chromeH);
+  }
+  try{ window.resizeTo(targetW, targetH); }catch(e){}
+  try{
+    await api('/api/phone/window/resize', {
+      session: PHONE_SESSION_ID,
+      width: targetW,
+      height: targetH,
+      name: PHONE_STATUS.app_name || PHONE_STATUS.package || '',
+    });
+  }catch(e){}
+  setTimeout(fitPhoneCanvas, 60);
+}
+async function switchPopoutPreset(newPreset){
+  if(!IS_PHONE_POPOUT || !PHONE_STATUS.package || PHONE_BUSY || !newPreset || newPreset === 'custom') return;
+  const sel = $('#popPresetSelect');
+  const prevPreset = PHONE_STATUS.preset || 'phone';
+  if(newPreset === prevPreset) return;
+  PHONE_BUSY = true;
+  if(sel) sel.disabled = true;
+  if($('#btnPopMatch')) $('#btnPopMatch').disabled = true;
+  try{
+    const r = await api('/api/phone/app/open', {
+      serial: PHONE_STATUS.serial || '',
+      package: PHONE_STATUS.package,
+      name: PHONE_STATUS.app_name || PHONE_STATUS.package,
+      preset: newPreset,
+      ime_policy: PHONE_STATUS.ime_policy || 'local',
+      max_fps: PHONE_STATUS.max_fps || 60,
+      popout: false,
+    });
+    if(!r || !r.ok){
+      if(sel) sel.value = prevPreset;
+      toast((r && r.error) || '切换分辨率失败', {type:'err'});
+      return;
+    }
+    destroyPhoneDecoder();
+    if(r.status) applyPhoneStatus(r.status);
+    toast(`已切换至 ${VD_PRESET_LABELS[newPreset] || newPreset}`, {type:'ok'});
+    await fitPopoutWindowToScreen(r.win_w, r.win_h);
+  }catch(e){
+    if(sel) sel.value = prevPreset;
+    toast('切换分辨率失败: ' + e, {type:'err'});
+  }finally{
+    PHONE_BUSY = false;
+    renderPhoneUi();
+  }
+}
+async function matchPopoutWindowResolution(){
+  if(!IS_PHONE_POPOUT || !PHONE_STATUS.package || PHONE_BUSY) return;
+  const vp = $('#phoneViewport');
+  if(!vp) return;
+  const dpr = window.devicePixelRatio || 1;
+  const availW = Math.max(240, vp.clientWidth - 14);
+  const availH = Math.max(240, vp.clientHeight - 14);
+  const physW = Math.max(320, Math.min(2560, Math.round((availW * dpr) / 8) * 8));
+  const physH = Math.max(320, Math.min(2560, Math.round((availH * dpr) / 8) * 8));
+  const dpi = physH >= physW
+    ? Math.max(160, Math.min(440, Math.round((physW * 160) / 380)))
+    : Math.max(160, Math.min(360, Math.round((physH * 160) / 480)));
+  const custom_display = `${physW}x${physH}/${dpi}`;
+  PHONE_BUSY = true;
+  renderPhoneUi();
+  try{
+    const r = await api('/api/phone/app/open', {
+      serial: PHONE_STATUS.serial || '',
+      package: PHONE_STATUS.package,
+      name: PHONE_STATUS.app_name || PHONE_STATUS.package,
+      custom_display,
+      ime_policy: PHONE_STATUS.ime_policy || 'local',
+      max_fps: PHONE_STATUS.max_fps || 60,
+      popout: false,
+    });
+    if(!r || !r.ok){
+      toast((r && r.error) || '匹配窗口分辨率失败', {type:'err'});
+      return;
+    }
+    destroyPhoneDecoder();
+    if(r.status) applyPhoneStatus(r.status);
+    toast(`已匹配当前窗口 1:1 像素（${physW}×${physH}）`, {type:'ok'});
+  }catch(e){
+    toast('匹配窗口分辨率失败: ' + e, {type:'err'});
+  }finally{
+    PHONE_BUSY = false;
+    renderPhoneUi();
+  }
+}
+$('#btnPopMatch').onclick = () => matchPopoutWindowResolution();
+$('#btnPopFit').onclick = () => fitPopoutWindowToScreen();
+$('#popPresetSelect').onchange = e => switchPopoutPreset(e.target.value);
+$('#btnPopBack').onclick = () => sendPhoneWs({type:'action', name:'back_or_screen_on'});
+$('#btnPopHome').onclick = () => sendPhoneWs({type:'key', keycode:3, action:'tap'});
+$('#btnPopShot').onclick = capturePhoneScreenshot;
+$('#btnPopRec').onclick = togglePhoneRecording;
+$('#btnPopUpload').onclick = () => { const inp = $('#phoneFileInput'); if(inp){ inp.value = ''; inp.click(); } };
+$('#btnPopIme').onclick = () => {
+  const box = $('#phonePopoutIme');
+  box.hidden = !box.hidden;
+  if(!box.hidden) $('#popImeInput').focus();
+};
+$('#btnPopImeClose').onclick = () => { $('#phonePopoutIme').hidden = true; };
+$('#btnPopImePull').onclick = () => { if(sendPhoneWs({type:'get_clipboard'})) toast('正在读取手机剪贴板…'); };
+const sendPopIme = () => {
+  const ta = $('#popImeInput');
+  const txt = ta.value;
+  if(!txt) return;
+  if(sendPhoneWs({type:'clipboard', text: txt, paste: true})){
+    ta.value = '';
+    $('#phonePopoutIme').hidden = true;
+    toast('已发送并粘贴', {type:'ok'});
+  }
+};
+$('#btnPopImeSend').onclick = sendPopIme;
+let POP_IME_COMP = false;
+$('#popImeInput').addEventListener('compositionstart', () => { POP_IME_COMP = true; });
+$('#popImeInput').addEventListener('compositionend', () => { POP_IME_COMP = false; });
+$('#popImeInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter' && !e.shiftKey){
+    if(e.isComposing || POP_IME_COMP || e.keyCode === 229) return;
+    e.preventDefault();
+    sendPopIme();
+  }else if(e.key === 'Escape'){
+    $('#phonePopoutIme').hidden = true;
+  }
+});
+$('#btnPhoneShot').onclick = capturePhoneScreenshot;
+$('#btnPhoneRec').onclick = togglePhoneRecording;
+$('#btnPhoneLaunchClash').onclick = launchPhoneClash;
+$('#btnPhoneUpload').onclick = () => { const inp = $('#phoneFileInput'); if(inp){ inp.value = ''; inp.click(); } };
+$('#phoneFileInput').onchange = e => { if(e.target.files && e.target.files.length) uploadPhoneFiles(e.target.files); };
+$('#btnPhoneClipPull').onclick = () => {
+  if(!PHONE_STATUS.running) return;
+  if(sendPhoneWs({type:'get_clipboard'})) toast('正在读取手机剪贴板…');
+};
+$('#btnPhoneClipCopy').onclick = () => {
+  if(!PHONE_CLIP_TEXT) return;
+  copyText(PHONE_CLIP_TEXT, '已复制到电脑剪贴板');
+};
+const PHONE_CLIP_AUTO_KEY = 'droidbridge.phoneClipAuto';
+try{
+  const savedClipAuto = localStorage.getItem(PHONE_CLIP_AUTO_KEY);
+  if(savedClipAuto === '0') PHONE_CLIP_AUTO = false;
+}catch(e){}
+$('#phoneClipAutoSync').checked = PHONE_CLIP_AUTO;
+$('#phoneClipAutoSync').onchange = e => {
+  PHONE_CLIP_AUTO = !!e.target.checked;
+  try{ localStorage.setItem(PHONE_CLIP_AUTO_KEY, PHONE_CLIP_AUTO ? '1' : '0'); }catch(err){}
+};
+const phoneStage = $('#phoneStagePanel');
+const hasDragFiles = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'));
+phoneStage.addEventListener('dragenter', e => {
+  if(!hasDragFiles(e)) return;
+  e.preventDefault();
+  PHONE_DROP_DEPTH += 1;
+  $('#phoneDropOverlay').hidden = false;
+});
+phoneStage.addEventListener('dragover', e => {
+  if(!hasDragFiles(e)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+});
+phoneStage.addEventListener('dragleave', e => {
+  if(!hasDragFiles(e)) return;
+  PHONE_DROP_DEPTH = Math.max(0, PHONE_DROP_DEPTH - 1);
+  if(PHONE_DROP_DEPTH === 0) $('#phoneDropOverlay').hidden = true;
+});
+phoneStage.addEventListener('drop', e => {
+  if(!hasDragFiles(e)) return;
+  e.preventDefault();
+  PHONE_DROP_DEPTH = 0;
+  $('#phoneDropOverlay').hidden = true;
+  if(e.dataTransfer.files && e.dataTransfer.files.length) uploadPhoneFiles(e.dataTransfer.files);
+});
 $('#btnPhoneReset').onclick = () => {
   destroyPhoneDecoder();
   sendPhoneWs({type:'action', name:'reset_video'});
@@ -4287,11 +5445,52 @@ $('#phoneMaxFps').onchange = () => {
   PHONE_STATUS.max_fps = Number($('#phoneMaxFps').value) || 60;
   if(PHONE_STATUS.running) startPhoneMirror({max_fps: Number($('#phoneMaxFps').value) || 60});
 };
+const PHONE_DIRECT_IME_KEY = 'droidbridge.phoneDirectPcIme';
+try{
+  const savedDirectIme = localStorage.getItem(PHONE_DIRECT_IME_KEY);
+  if(savedDirectIme === '0') PHONE_DIRECT_PC_IME = false;
+}catch(e){}
+if($('#phoneDirectPcIme')){
+  $('#phoneDirectPcIme').checked = PHONE_DIRECT_PC_IME;
+  $('#phoneDirectPcIme').onchange = e => {
+    PHONE_DIRECT_PC_IME = !!e.target.checked;
+    try{ localStorage.setItem(PHONE_DIRECT_IME_KEY, PHONE_DIRECT_PC_IME ? '1' : '0'); }catch(err){}
+  };
+}
+const phoneImeProxy = $('#phoneImeProxy');
+if(phoneImeProxy){
+  phoneImeProxy.addEventListener('compositionstart', () => { PHONE_DIRECT_COMPOSING = true; });
+  phoneImeProxy.addEventListener('compositionend', () => {
+    PHONE_DIRECT_COMPOSING = false;
+    const val = phoneImeProxy.value;
+    phoneImeProxy.value = '';
+    if(val) queuePhoneDirectText(val, true);
+  });
+  phoneImeProxy.addEventListener('input', e => {
+    if(PHONE_DIRECT_COMPOSING || e.isComposing) return;
+    const val = phoneImeProxy.value;
+    phoneImeProxy.value = '';
+    if(val) queuePhoneDirectText(val, /[^\x20-\x7e]/.test(val));
+  });
+  phoneImeProxy.addEventListener('paste', e => {
+    if(!PHONE_STATUS.running) return;
+    e.preventDefault();
+    const txt = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+    if(txt) queuePhoneDirectText(txt, true);
+  });
+  phoneImeProxy.addEventListener('keydown', handlePhoneImeProxyKeydown);
+}
 const phoneCanvas = $('#phoneCanvas');
 phoneCanvas.addEventListener('contextmenu', e => e.preventDefault());
+phoneCanvas.addEventListener('mousedown', e => {
+  if(e.button === 0 && PHONE_STATUS.running){
+    e.preventDefault();
+    focusPhoneImeProxy(e);
+  }
+});
 phoneCanvas.addEventListener('pointerdown', e => {
   if(!PHONE_STATUS.running) return;
-  phoneCanvas.focus();
+  focusPhoneImeProxy(e);
   if(e.button === 2){
     e.preventDefault();
     sendPhoneWs({type:'action', name:'back_or_screen_on'});
@@ -4323,14 +5522,21 @@ phoneCanvas.addEventListener('wheel', e => {
   e.preventDefault();
   const pt = mapPhoneCanvasPoint(e);
   if(!pt) return;
+  if(e.ctrlKey || e.metaKey){
+    if(Math.abs(e.deltaY || 0) > 0) triggerPhonePinch(pt, e.deltaY < 0);
+    return;
+  }
   const dx = Math.max(-16, Math.min(16, -(e.deltaX || 0) / 100));
   const dy = Math.max(-16, Math.min(16, -(e.deltaY || 0) / 100));
   sendPhoneWs({type:'scroll', ...pt, dx: Number(dx.toFixed(2)), dy: Number(dy.toFixed(2))});
 }, {passive:false});
 phoneCanvas.addEventListener('keydown', handlePhoneCanvasKeydown);
 if(typeof ResizeObserver === 'function'){
-  new ResizeObserver(() => fitPhoneCanvas()).observe($('#phoneLayout'));
+  const phoneRo = new ResizeObserver(() => fitPhoneCanvas());
+  if($('#phoneLayout')) phoneRo.observe($('#phoneLayout'));
+  if($('#phoneViewport')) phoneRo.observe($('#phoneViewport'));
 }
+window.addEventListener('resize', () => fitPhoneCanvas());
 setInterval(() => {
   if(!PHONE_STATUS.running) return;
   const ts = performance.now();
@@ -4342,12 +5548,14 @@ setInterval(() => {
 document.addEventListener('keydown', e => {
   if(e.key === 'Escape'){
     if(!$('#confirm').hidden){ settleConfirm(false); return; }
+    if(!$('#phoneAppModal').hidden){ closePhoneAppModal(); return; }
     if(!$('#editor').hidden){ closeEditor(); return; }
   }
+  if(IS_PHONE_POPOUT) return;
   const t = e.target;
   const inField = t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || t.id==='phoneCanvas');
   if(inField || e.ctrlKey || e.metaKey || e.altKey) return;
-  if(!$('#confirm').hidden || !$('#editor').hidden) return;
+  if(!$('#confirm').hidden || !$('#editor').hidden || !$('#phoneAppModal').hidden) return;
   if(e.key === '/'){
     e.preventDefault();
     if(ACTIVE_VIEW === 'traffic' && DIAGNOSTIC_TAB === 'connections') $('#connSearch').focus();
@@ -4361,23 +5569,44 @@ document.addEventListener('keydown', e => {
   else if(e.key === '4'){ setActiveView('settings'); }
 });
 window.addEventListener('beforeunload', () => {
+  if(IS_PHONE_POPOUT){
+    try{ navigator.sendBeacon('/api/phone/stop?token=' + encodeURIComponent(TOKEN) + '&session=' + encodeURIComponent(PHONE_SESSION_ID), ''); }catch(e){}
+    return;
+  }
   try{ navigator.sendBeacon('/api/quit?token=' + encodeURIComponent(TOKEN), ''); }catch(e){}
 });
 
-let logCollapsed = true;
-try{
-  const savedLogPreference = localStorage.getItem(LOG_COLLAPSE_KEY);
-  logCollapsed = savedLogPreference === null ? true : savedLogPreference === '1';
-}catch(e){}
-applyLogCollapse(logCollapsed);
-renderLogs();
-log('DroidBridge 已就绪', 'ok');
-refresh();
-loadAdbState();
-loadExitIp(false);
-loadPhoneStatus();
-renderPhoneUi();
-setInterval(refresh, 8000);
+if(IS_PHONE_POPOUT){
+  document.body.classList.add('phone-popout-mode');
+  $('#phonePopoutBar').hidden = false;
+  ACTIVE_VIEW = 'phone';
+  $('#viewApps').hidden = true;
+  $('#viewPhone').hidden = false;
+  loadPhoneStatus().then(() => {
+    if(PHONE_STATUS.running){
+      connectPhoneWs();
+      fitPhoneCanvas();
+    }
+  });
+}else{
+  let logCollapsed = true;
+  try{
+    const savedLogPreference = localStorage.getItem(LOG_COLLAPSE_KEY);
+    logCollapsed = savedLogPreference === null ? true : savedLogPreference === '1';
+  }catch(e){}
+  applyLogCollapse(logCollapsed);
+  renderLogs();
+  log('DroidBridge 已就绪', 'ok');
+  refresh();
+  loadAdbState();
+  loadExitIp(false);
+  loadPhoneStatus();
+  renderPhoneUi();
+  setInterval(() => {
+    if(ACTIVE_VIEW === 'phone') loadPhoneDeviceInfo();
+  }, 30000);
+  setInterval(refresh, 8000);
+}
 </script>
 </body>
 </html>

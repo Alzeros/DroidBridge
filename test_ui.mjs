@@ -228,8 +228,15 @@ async function startServer() {
       process_stats: ps,
     };
   };
+  let pinnedPhoneApps = [];
+  let virtualSessions = [];
   let phoneStatus = {
     ok: true,
+    session_id: 'main',
+    is_virtual: false,
+    package: '',
+    app_name: '',
+    preset: '',
     running: false,
     starting: false,
     serial: '',
@@ -242,6 +249,7 @@ async function startServer() {
     clients: 0,
     server_ready: true,
     error: '',
+    sessions: [],
   };
   const sendWsText = (sock, text) => {
     const payload = Buffer.from(text, 'utf8');
@@ -290,7 +298,12 @@ async function startServer() {
     }
     if (url.pathname === '/api/state') {
       requests.push({ path: url.pathname });
-      res.end(JSON.stringify({ ...state, active_connections: activeConnections.length }));
+      res.end(JSON.stringify({
+        ...state,
+        active_connections: activeConnections.length,
+        phone_apps: pinnedPhoneApps,
+        phone_sessions: virtualSessions,
+      }));
       return;
     }
     if (url.pathname === '/api/connections') {
@@ -329,7 +342,149 @@ async function startServer() {
       return;
     }
     if (url.pathname === '/api/phone/status') {
-      res.end(JSON.stringify(phoneStatus));
+      const sid = url.searchParams.get('session') || 'main';
+      if (sid !== 'main') {
+        const hit = virtualSessions.find((s) => s.session_id === sid);
+        res.end(JSON.stringify(hit ? {
+          ok: true,
+          ...hit,
+          screen_off: false,
+          quality: '1080',
+          max_fps: 60,
+          clients: 1,
+          server_ready: true,
+          error: '',
+          sessions: virtualSessions,
+        } : {
+          ok: true,
+          session_id: sid,
+          is_virtual: true,
+          package: '',
+          app_name: '',
+          preset: '',
+          running: false,
+          starting: false,
+          serial: '',
+          device_name: '',
+          width: 0,
+          height: 0,
+          screen_off: false,
+          quality: '1080',
+          max_fps: 60,
+          clients: 0,
+          server_ready: true,
+          error: '',
+          sessions: virtualSessions,
+        }));
+        return;
+      }
+      res.end(JSON.stringify({ ...phoneStatus, sessions: virtualSessions }));
+      return;
+    }
+    if (url.pathname === '/api/phone/apps') {
+      requests.push({ path: url.pathname });
+      res.end(JSON.stringify({
+        ok: true,
+        serial: 'SERIAL123',
+        apps: [
+          { name: 'FlClash', package: 'com.follow.clash', system: false },
+          { name: '微信', package: 'com.tencent.mm', system: false },
+          { name: '三星浏览器', package: 'com.sec.android.app.sbrowser', system: true },
+        ],
+        sessions: virtualSessions,
+      }));
+      return;
+    }
+    if (url.pathname === '/api/phone/app/open') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      const sid = 'app_' + String(parsed.package || '').replace(/[^A-Za-z0-9_]/g, '_');
+      const preset = parsed.custom_display ? 'custom' : (parsed.preset || 'phone');
+      const presetMap = {
+        phone: { dims: [480, 856], win_w: 510, win_h: 947 },
+        phone_hd: { dims: [720, 1280], win_w: 500, win_h: 930 },
+        tablet: { dims: [960, 600], win_w: 990, win_h: 691 },
+        tablet_hd: { dims: [1280, 720], win_w: 1310, win_h: 811 },
+        tablet_fhd: { dims: [1600, 900], win_w: 1630, win_h: 991 },
+      };
+      let dims, winW, winH;
+      if (parsed.custom_display) {
+        const m = String(parsed.custom_display).match(/^(\d+)x(\d+)/);
+        dims = m ? [Number(m[1]), Number(m[2])] : [960, 600];
+        winW = 0; winH = 0;
+      } else {
+        const cfg = presetMap[preset] || presetMap.phone;
+        dims = cfg.dims;
+        winW = cfg.win_w;
+        winH = cfg.win_h;
+      }
+      const sess = {
+        session_id: sid,
+        running: true,
+        starting: false,
+        is_virtual: true,
+        serial: parsed.serial || 'SERIAL123',
+        device_name: 'SM-G9730',
+        package: parsed.package,
+        app_name: parsed.name || parsed.package,
+        preset,
+        ime_policy: parsed.ime_policy || 'local',
+        width: dims[0],
+        height: dims[1],
+        clients: 1,
+      };
+      virtualSessions = virtualSessions.filter((s) => s.session_id !== sid).concat([sess]);
+      res.end(JSON.stringify({
+        ok: true,
+        session_id: sid,
+        status: { ok: true, ...sess, sessions: virtualSessions },
+        window_url: `http://127.0.0.1:${server.address().port}/?phone_window=${sid}`,
+        focused_existing: false,
+        win_w: winW,
+        win_h: winH,
+      }));
+      return;
+    }
+    if (url.pathname === '/api/phone/window/resize') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      res.end(JSON.stringify({ ok: true, resized: true, width: parsed.width, height: parsed.height }));
+      return;
+    }
+    if (url.pathname === '/api/phone/app/pin') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      const item = {
+        id: 'papp_' + String(parsed.package || '').replace(/[^A-Za-z0-9_]/g, '_'),
+        name: parsed.name || parsed.package,
+        package: parsed.package,
+        preset: parsed.preset || 'phone',
+        max_fps: 60,
+      };
+      pinnedPhoneApps = pinnedPhoneApps.filter((x) => x.package !== item.package).concat([item]);
+      res.end(JSON.stringify({
+        ok: true,
+        item,
+        state: { ...state, active_connections: activeConnections.length, phone_apps: pinnedPhoneApps, phone_sessions: virtualSessions },
+      }));
+      return;
+    }
+    if (url.pathname === '/api/phone/app/unpin') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      pinnedPhoneApps = pinnedPhoneApps.filter((x) => x.package !== parsed.package);
+      res.end(JSON.stringify({
+        ok: true,
+        state: { ...state, active_connections: activeConnections.length, phone_apps: pinnedPhoneApps, phone_sessions: virtualSessions },
+      }));
       return;
     }
     if (url.pathname === '/api/phone/start') {
@@ -356,7 +511,16 @@ async function startServer() {
       return;
     }
     if (url.pathname === '/api/phone/stop') {
-      requests.push({ path: url.pathname });
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      const sid = parsed.session || url.searchParams.get('session') || 'main';
+      requests.push({ path: url.pathname, session: sid });
+      if (sid !== 'main') {
+        virtualSessions = virtualSessions.filter((s) => s.session_id !== sid);
+        res.end(JSON.stringify({ ok: true, status: { ok: true, session_id: sid, running: false, sessions: virtualSessions } }));
+        return;
+      }
       phoneStatus = {
         ...phoneStatus,
         running: false,
@@ -368,7 +532,42 @@ async function startServer() {
         error: '',
       };
       broadcastPhoneStatus();
-      res.end(JSON.stringify({ ok: true, status: phoneStatus }));
+      res.end(JSON.stringify({ ok: true, status: { ...phoneStatus, sessions: virtualSessions } }));
+      return;
+    }
+    if (url.pathname === '/api/phone/info') {
+      requests.push({ path: url.pathname });
+      res.end(JSON.stringify({
+        ok: true,
+        serial: 'SERIAL123',
+        model: 'SM_G9730',
+        battery: { level: 84, temp_c: 22.6, charging: false, full: false, plugged: true, status: 4 },
+        network: { type: 'Wi-Fi', ip: '172.20.10.4', wifi_ip: '172.20.10.4', cellular_ip: '' },
+        proxy_apps: [{ package: 'com.follow.clash', label: 'FlClash' }],
+      }));
+      return;
+    }
+    if (url.pathname === '/api/phone/launch-app') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const parsed = body ? JSON.parse(body) : {};
+      requests.push({ path: url.pathname, body: parsed });
+      res.end(JSON.stringify({ ok: true, serial: parsed.serial || 'SERIAL123', package: parsed.package, component: `${parsed.package}/.MainActivity` }));
+      return;
+    }
+    if (url.pathname === '/api/phone/upload') {
+      let totalBytes = 0;
+      for await (const chunk of req) totalBytes += chunk.length;
+      const name = url.searchParams.get('name') || 'upload.bin';
+      const isApk = /\.apk$/i.test(name);
+      requests.push({ path: url.pathname, name, size: totalBytes });
+      res.end(JSON.stringify({
+        ok: true,
+        mode: isApk ? 'install' : 'push',
+        filename: name,
+        size: totalBytes,
+        message: isApk ? `已安装 APK：${name}` : `已发送至手机 /sdcard/Download/${name}`,
+      }));
       return;
     }
     if (url.pathname === '/api/exit-ip') {
@@ -511,7 +710,12 @@ async function startServer() {
       + `Sec-WebSocket-Accept: ${accept}\r\n\r\n`
     );
     wsClients.add(socket);
-    sendWsText(socket, JSON.stringify({ type: 'status', ...phoneStatus }));
+    const wsUrlObj = new URL(req.url, 'http://127.0.0.1');
+    const wsSid = wsUrlObj.searchParams.get('session') || 'main';
+    const initStatus = wsSid === 'main'
+      ? { ...phoneStatus, sessions: virtualSessions }
+      : { ...(virtualSessions.find((s) => s.session_id === wsSid) || { session_id: wsSid, running: false, is_virtual: true }), sessions: virtualSessions };
+    sendWsText(socket, JSON.stringify({ type: 'status', ...initStatus }));
     let buf = Buffer.alloc(0);
     socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk]);
@@ -548,6 +752,10 @@ async function startServer() {
             if (msg.type === 'display_power') {
               phoneStatus.screen_off = !msg.on;
               broadcastPhoneStatus();
+            } else if (msg.type === 'get_clipboard') {
+              sendWsText(socket, JSON.stringify({ type: 'clipboard', text: '验证码 884210', time: '19:15:00' }));
+            } else if (msg.type === 'clipboard') {
+              sendWsText(socket, JSON.stringify({ type: 'ack_clipboard', seq: wsMessages.length }));
             }
           } catch {}
         }
@@ -1431,13 +1639,53 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     const connected = await browser.evaluate(`(() => ({
       liveDotVisible: !document.querySelector('#navPhoneLive').hidden,
       statSize: document.querySelector('#phoneStatSize').textContent,
+      statBattery: document.querySelector('#phoneStatBattery').textContent,
+      statNet: document.querySelector('#phoneStatNet').textContent,
+      clashBtnText: document.querySelector('#btnPhoneLaunchClash').textContent.trim(),
+      clashBtnDisabled: document.querySelector('#btnPhoneLaunchClash').disabled,
+      shotVisible: !document.querySelector('#btnPhoneShot').hidden,
+      recVisible: !document.querySelector('#btnPhoneRec').hidden,
       metaSub: document.querySelector('#phoneMetaSub').textContent,
       toggleText: document.querySelector('#btnPhoneToggle').textContent,
     }))()`);
     assert.equal(connected.liveDotVisible, true);
     assert.equal(connected.statSize, '512×1080');
+    assert.equal(connected.statBattery, '84% · 已插电 · 22.6°C');
+    assert.equal(connected.statNet, 'Wi-Fi · 172.20.10.4');
+    assert.equal(connected.clashBtnText, '打开 FlClash');
+    assert.equal(connected.clashBtnDisabled, false);
+    assert.equal(connected.shotVisible, true);
+    assert.equal(connected.recVisible, true);
     assert.match(connected.metaSub, /SM-G9730.*512×1080.*上限 60/);
     assert.equal(connected.toggleText, '断开连接');
+
+    // One-click Clash launch
+    await browser.evaluate("document.querySelector('#btnPhoneLaunchClash').click()");
+    const launchDeadline = Date.now() + 4000;
+    let launchReq;
+    while (Date.now() < launchDeadline) {
+      launchReq = requests.findLast((r) => r.path === '/api/phone/launch-app');
+      if (launchReq) break;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    assert.deepEqual(launchReq?.body, { serial: 'SERIAL123', package: 'com.follow.clash' });
+
+    // Pull phone clipboard -> displays synced text and enables copy button
+    await browser.evaluate("document.querySelector('#btnPhoneClipPull').click()");
+    await browser.waitFor("document.querySelector('#phoneClipPreview').textContent.includes('884210')");
+    assert.equal(await browser.evaluate("document.querySelector('#btnPhoneClipCopy').disabled"), false);
+
+    // File / APK upload via uploadPhoneFiles
+    await browser.evaluate("uploadPhoneFiles([new File(['PK-demo'], 'demo.apk', { type: 'application/vnd.android.package-archive' })])");
+    const upDeadline = Date.now() + 4000;
+    let upReq;
+    while (Date.now() < upDeadline) {
+      upReq = requests.findLast((r) => r.path === '/api/phone/upload');
+      if (upReq) break;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    assert.equal(upReq?.name, 'demo.apk');
+    assert.equal(upReq?.size, 7);
 
     // Paint a mock phone frame so live screenshot looks realistic if captured
     if (process.env.DROIDBRIDGE_UI_SHOT_PHONE_LIVE) {
@@ -1488,6 +1736,16 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     assert.ok(scrollMsg && scrollMsg.dy < 0);
     assert.ok(textKey);
 
+    // Ctrl + Wheel pinch zoom emits dual-finger touch events (pointer_id 100 and 101)
+    await browser.evaluate(`(() => {
+      const c = document.querySelector('#phoneCanvas');
+      const r = c.getBoundingClientRect();
+      c.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, deltaY: -120 }));
+    })()`);
+    const pinchF1Up = await waitWs((m) => m.type === 'touch' && m.action === 'up' && m.pointer_id === 100);
+    const pinchF2Up = await waitWs((m) => m.type === 'touch' && m.action === 'up' && m.pointer_id === 101);
+    assert.ok(pinchF1Up && pinchF2Up, 'Ctrl+Wheel pinch must emit dual-finger touch sequences');
+
     // Screen-off button toggles display_power and updates badge
     await browser.evaluate("document.querySelector('#btnPhoneScreenOff').click()");
     const pwrOff = await waitWs((m) => m.type === 'display_power' && m.on === false);
@@ -1530,6 +1788,207 @@ test('DroidBridge dashboard live chain, search, routing feed and undo', { timeou
     await browser.waitFor("document.querySelector('#phoneEmpty').hidden === false");
     assert.equal(await browser.evaluate("document.querySelector('#navPhoneLive').hidden"), true);
     assert.ok(requests.some((r) => r.path === '/api/phone/stop'));
+
+    // Phone App Picker: lists user apps, filters system apps, pins to Apps shelf, and opens virtual display popout
+    await browser.evaluate("document.querySelector('#btnPhoneOpenApps').click()");
+    await browser.waitFor("document.querySelector('#phoneAppModal').hidden === false && document.querySelectorAll('#phoneAppList .phone-picker-row').length === 2");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#phoneAppList .phone-picker-row').length"), 2);
+    await browser.evaluate("document.querySelector('#phoneAppFilterChips [data-pfilter=\"all\"]').click()");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#phoneAppList .phone-picker-row').length"), 3);
+    await browser.evaluate("document.querySelector('#phoneAppFilterChips [data-pfilter=\"user\"]').click()");
+
+    // Pin FlClash to Apps shelf and open virtual display window
+    await browser.evaluate("document.querySelector('#phoneAppList button[data-mpin=\"com.follow.clash\"]').click()");
+    await browser.waitFor("document.querySelector('#phoneAppList button[data-mpin=\"com.follow.clash\"]')?.textContent?.trim() === '已钉住'");
+    await browser.evaluate("document.querySelector('#phoneAppList button[data-mopen=\"com.follow.clash\"]').click()");
+    await browser.waitFor("document.querySelectorAll('#phoneSessionsList .phone-session-pill').length === 1");
+    assert.ok(requests.some((r) => r.path === '/api/phone/app/open' && r.body?.package === 'com.follow.clash' && r.body?.popout === true));
+    await browser.evaluate("document.querySelector('#btnPhoneAppModalClose').click()");
+    assert.equal(await browser.evaluate("document.querySelector('#phoneAppModal').hidden"), true);
+
+    // Verify pinned FlClash appears on Apps shelf with running badge and unpins cleanly
+    await browser.evaluate("document.querySelector('#navApps').click()");
+    await browser.waitFor("document.querySelector('#pinnedPhoneAppsWrap').hidden === false");
+    assert.equal(await browser.evaluate("document.querySelectorAll('#pinnedPhoneAppsGrid .phone-app-card').length"), 1);
+    assert.match(await browser.evaluate("document.querySelector('#pinnedPhoneAppsGrid .phone-app-card').textContent"), /FlClash[\s\S]*运行中/);
+    await browser.evaluate("document.querySelector('#pinnedPhoneAppsGrid button[data-punpin=\"com.follow.clash\"]').click()");
+    await browser.waitFor("document.querySelector('#pinnedPhoneAppsWrap').hidden === true");
+
+    // Verify standalone popout window (?phone_window=app_com_follow_clash) renders cleanly with compact bar & IME drawer
+    const popBrowser = await startBrowser(findBrowser());
+    try {
+      await popBrowser.send('Emulation.setDeviceMetricsOverride', { width: 420, height: 780, deviceScaleFactor: 1, mobile: false });
+      await popBrowser.send('Page.navigate', { url: `${url}/?phone_window=app_com_follow_clash` });
+      await popBrowser.waitFor("document.readyState === 'complete'");
+      await popBrowser.waitFor("document.querySelector('#phoneLiveWrap').hidden === false && PHONE_WS && PHONE_WS.readyState === 1");
+      const popInfo = await popBrowser.evaluate(`(() => ({
+        isPopout: document.body.classList.contains('phone-popout-mode'),
+        title: document.title,
+        barTitle: document.querySelector('#phonePopoutTitle').textContent.trim(),
+        barDim: document.querySelector('#phonePopoutDim').textContent.trim(),
+        presetVal: document.querySelector('#popPresetSelect').value,
+        sidebarHidden: getComputedStyle(document.querySelector('.sidebar')).display === 'none',
+        railHidden: getComputedStyle(document.querySelector('.phone-rail')).display === 'none',
+        stageW: Math.round(document.querySelector('#mainStage').getBoundingClientRect().width),
+        barW: Math.round(document.querySelector('#phonePopoutBar').getBoundingClientRect().width),
+        canvasW: Math.round(document.querySelector('#phoneCanvas').getBoundingClientRect().width),
+        overflowX: document.documentElement.scrollWidth > window.innerWidth + 1,
+      }))()`);
+      assert.equal(popInfo.isPopout, true);
+      assert.equal(popInfo.title, 'FlClash · DroidBridge 手机应用');
+      assert.equal(popInfo.barTitle, 'FlClash');
+      assert.equal(popInfo.barDim, '480×856');
+      assert.equal(popInfo.presetVal, 'phone');
+      assert.equal(popInfo.sidebarHidden, true);
+      assert.equal(popInfo.railHidden, true);
+      assert.ok(popInfo.stageW >= 418, `expected full stage width >= 418, got ${popInfo.stageW}`);
+      assert.ok(popInfo.barW >= 418, `expected full bar width >= 418, got ${popInfo.barW}`);
+      assert.ok(popInfo.canvasW >= 380, `expected portrait canvas >= 380px wide, got ${popInfo.canvasW}`);
+      assert.equal(popInfo.overflowX, false);
+
+      if (process.env.DROIDBRIDGE_UI_SHOT_POPOUT) {
+        await popBrowser.evaluate(`(() => {
+          const c = document.querySelector('#phoneCanvas');
+          const ctx = c.getContext('2d');
+          const g = ctx.createLinearGradient(0, 0, c.width, c.height);
+          g.addColorStop(0, '#0f172a'); g.addColorStop(1, '#1d4ed8');
+          ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 34px sans-serif';
+          ctx.fillText('FlClash', 36, 96);
+          ctx.font = '20px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.85)';
+          ctx.fillText('1080p 清晰竖屏 · 480×856', 36, 138);
+        })()`);
+        const shot = await popBrowser.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(process.env.DROIDBRIDGE_UI_SHOT_POPOUT, Buffer.from(shot.data, 'base64'));
+      }
+
+      // Direct PC IME typing via #phoneImeProxy: clicking canvas focuses proxy, English symbols + Enter preserve strict FIFO order, Chinese composition pastes directly, Ctrl+A sends meta ctrl
+      const wsStartIdx = wsMessages.length;
+      const focusedId = await popBrowser.evaluate(`(() => {
+        const c = document.querySelector('#phoneCanvas');
+        const r = c.getBoundingClientRect();
+        c.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1, clientX: r.left + 80, clientY: r.top + 120 }));
+        c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: r.left + 80, clientY: r.top + 120 }));
+        return document.activeElement && document.activeElement.id;
+      })()`);
+      assert.equal(focusedId, 'phoneImeProxy');
+
+      await popBrowser.evaluate(`(() => {
+        const p = document.querySelector('#phoneImeProxy');
+        p.value = 'hello, world.?/';
+        p.dispatchEvent(new InputEvent('input', { bubbles: true, data: 'hello, world.?/', isComposing: false }));
+        p.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      })()`);
+      const enClip = await waitWs((m) => m.type === 'clipboard' && m.text === 'hello, world.?/' && m.paste === true);
+      const enEnter = await waitWs((m) => m.type === 'key' && m.keycode === 66);
+      assert.ok(enClip && enEnter, 'direct English + symbols followed by Enter must send clipboard paste then Enter');
+      const clipIdx = wsMessages.indexOf(enClip, wsStartIdx);
+      const enterIdx = wsMessages.indexOf(enEnter, wsStartIdx);
+      assert.ok(clipIdx < enterIdx, `paste (${clipIdx}) must arrive strictly before Enter (${enterIdx})`);
+
+      await popBrowser.evaluate(`(() => {
+        const p = document.querySelector('#phoneImeProxy');
+        p.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+        p.value = '你好，世界！';
+        p.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '你好，世界！' }));
+        p.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true }));
+      })()`);
+      const cnDirect = await waitWs((m) => m.type === 'clipboard' && m.text === '你好，世界！' && m.paste === true);
+      const ctrlA = await waitWs((m) => m.type === 'key' && m.keycode === 29 && m.meta === 0x3000);
+      assert.ok(cnDirect, 'direct Chinese IME composition on canvas must paste directly');
+      assert.ok(ctrlA, 'Ctrl+A on proxy must forward Android KEYCODE_A with META_CTRL');
+
+      // Regression: resizing popout window wider than 760px / 960px / 1080px MUST fill full width (never collapse to 220px sidebar column!)
+      await popBrowser.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 780, deviceScaleFactor: 1, mobile: false });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      // Switch preset inline to tablet (960x600) and verify full-width landscape scaling + backend resize + ime_policy=local
+      await popBrowser.evaluate(`(() => {
+        const sel = document.querySelector('#popPresetSelect');
+        sel.value = 'tablet';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await popBrowser.waitFor("document.querySelector('#phonePopoutDim').textContent.trim() === '960×600'");
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const wideInfo = await popBrowser.evaluate(`(() => {
+        const stage = document.querySelector('#mainStage').getBoundingClientRect();
+        const pane = document.querySelector('#viewPhone').getBoundingClientRect();
+        const bar = document.querySelector('#phonePopoutBar').getBoundingClientRect();
+        const vp = document.querySelector('#phoneViewport').getBoundingClientRect();
+        const c = document.querySelector('#phoneCanvas').getBoundingClientRect();
+        return {
+          bodyDisplay: getComputedStyle(document.body).display,
+          stageW: Math.round(stage.width),
+          paneW: Math.round(pane.width),
+          barW: Math.round(bar.width),
+          vpW: Math.round(vp.width),
+          canvasW: Math.round(c.width),
+          canvasH: Math.round(c.height),
+          overflowX: document.documentElement.scrollWidth > window.innerWidth + 1,
+        };
+      })()`);
+      assert.equal(wideInfo.bodyDisplay, 'flex');
+      assert.ok(wideInfo.stageW >= 1198, `expected wide stageW >= 1198, got ${wideInfo.stageW}`);
+      assert.ok(wideInfo.paneW >= 1198, `expected wide paneW >= 1198 (not capped at 1080), got ${wideInfo.paneW}`);
+      assert.ok(wideInfo.barW >= 1198, `expected wide barW >= 1198, got ${wideInfo.barW}`);
+      assert.ok(wideInfo.vpW >= 1198, `expected wide vpW >= 1198, got ${wideInfo.vpW}`);
+      assert.ok(wideInfo.canvasW >= 1100, `expected wide tablet canvasW >= 1100, got ${wideInfo.canvasW}`);
+      assert.ok(wideInfo.canvasH >= 680, `expected wide tablet canvasH >= 680, got ${wideInfo.canvasH}`);
+      assert.equal(wideInfo.overflowX, false);
+      const tabletOpenReq = requests.findLast((r) => r.path === '/api/phone/app/open');
+      assert.equal(tabletOpenReq?.body?.ime_policy, 'local');
+      const presetResizeReq = requests.findLast((r) => r.path === '/api/phone/window/resize');
+      assert.equal(presetResizeReq?.body?.width, 990);
+      assert.equal(presetResizeReq?.body?.height, 691);
+
+      // Clicking "1:1" matches current window physical pixels (1200x780 -> ~1184x728 8-aligned)
+      await popBrowser.evaluate("document.querySelector('#btnPopMatch').click()");
+      await popBrowser.waitFor("document.querySelector('#popPresetSelect').value === 'custom'");
+      const matchReq = requests.findLast((r) => r.path === '/api/phone/app/open');
+      assert.match(String(matchReq?.body?.custom_display || ''), /^\d{3,4}x\d{3,4}\/\d{3}$/);
+      assert.equal(matchReq?.body?.ime_policy, 'local');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      if (process.env.DROIDBRIDGE_UI_SHOT_POPOUT_WIDE) {
+        await popBrowser.evaluate(`(() => {
+          const c = document.querySelector('#phoneCanvas');
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+          ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, 0, 340, c.height);
+          ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(340, 0); ctx.lineTo(340, c.height); ctx.stroke();
+          ctx.fillStyle = '#0f172a'; ctx.font = 'bold 38px sans-serif';
+          ctx.fillText('FlClash · 1:1 窗口像素匹配', 390, 190);
+          ctx.fillStyle = '#475569'; ctx.font = '24px sans-serif';
+          ctx.fillText(c.width + '×' + c.height + ' · 跟随电脑输入法直打中/英', 390, 245);
+        })()`);
+        const shot = await popBrowser.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(process.env.DROIDBRIDGE_UI_SHOT_POPOUT_WIDE, Buffer.from(shot.data, 'base64'));
+      }
+
+      // Clicking "贴合" sends a fresh window resize request
+      const resizeBefore = requests.filter((r) => r.path === '/api/phone/window/resize').length;
+      await popBrowser.evaluate("document.querySelector('#btnPopFit').click()");
+      const deadlineFit = Date.now() + 3000;
+      while (Date.now() < deadlineFit && requests.filter((r) => r.path === '/api/phone/window/resize').length <= resizeBefore) {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      const fitReq = requests.findLast((r) => r.path === '/api/phone/window/resize');
+      assert.ok(fitReq && fitReq.body.width >= 320 && fitReq.body.height >= 320);
+
+      // Popout IME drawer sends Chinese paste via WS
+      await popBrowser.evaluate(`(() => {
+        document.querySelector('#btnPopIme').click();
+        const ta = document.querySelector('#popImeInput');
+        ta.value = '独立窗口中文';
+        document.querySelector('#btnPopImeSend').click();
+      })()`);
+      const popClip = await waitWs((m) => m.type === 'clipboard' && m.text === '独立窗口中文' && m.paste === true);
+      assert.ok(popClip);
+      assert.deepEqual(popBrowser.runtimeErrors, []);
+    } finally {
+      await popBrowser.close();
+    }
+    // Close virtual session cleanly
+    await browser.evaluate("stopPhoneVirtualSession('app_com_follow_clash')");
   });
 
   await t.test('multi-device ADB selector in settings view passes serial and refreshes proxy chain immediately', async () => {

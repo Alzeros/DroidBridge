@@ -55,6 +55,7 @@ RUNTIME_PATH = Path(tempfile.gettempdir()) / "droidbridge_runtime.json"
 
 API_TOKEN = secrets.token_urlsafe(24)
 MAX_BODY_BYTES = 1_048_576
+MAX_PHONE_UPLOAD_BYTES = 512 * 1024 * 1024
 
 DEFAULT_CONFIG = {
     "adb_path": "",
@@ -77,6 +78,7 @@ DEFAULT_CONFIG = {
             "note": "Google AI IDE (Electron + Node sidecar)",
         }
     ],
+    "phone_apps": [],
 }
 
 # Files that only exist next to an Electron / Chromium based binary.
@@ -1463,6 +1465,8 @@ def make_state():
         "proxy_upstream_online": upstream_online,
         "proxy_upstream_latency_ms": upstream_latency,
         "apps": apps,
+        "phone_apps": list(cfg.get("phone_apps") or []),
+        "phone_sessions": _phone_mirror.list_sessions(),
     }
 
 
@@ -2464,20 +2468,21 @@ class AdbTool:
             pass
         return "path"
 
-    def run(self, args):
+    def run(self, args, timeout=None):
         argv = self.resolve()
         if argv is None:
             raise AdbError("未找到 adb 可执行文件，请在 ADB 设置里填写路径")
+        eff_timeout = self.timeout if timeout is None else timeout
         with self._lock:
             try:
                 proc = subprocess.run(
                     argv + list(args),
                     capture_output=True,
-                    timeout=self.timeout,
+                    timeout=eff_timeout,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
             except subprocess.TimeoutExpired:
-                raise AdbError("adb 命令超时（%s 秒）" % self.timeout)
+                raise AdbError("adb 命令超时（%s 秒）" % eff_timeout)
             except OSError as exc:
                 raise AdbError("无法执行 adb：%s" % exc)
         out = proc.stdout.decode("utf-8", errors="replace")[:ADB_OUTPUT_LIMIT]
@@ -2732,13 +2737,37 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if parsed.path == "/api/phone/status":
-                self.send_json(_phone_mirror.status())
+                session_id = query.get("session", ["main"])[0]
+                self.send_json(_phone_mirror.status(session_id))
+                return
+
+            if parsed.path == "/api/phone/info":
+                serial = query.get("serial", [""])[0]
+                try:
+                    info = scrcpy_bridge.get_device_info(AdbTool(load_config()), serial=serial)
+                except scrcpy_bridge.ScrcpyError as exc:
+                    self.send_json({"ok": False, "error": str(exc)}, 400)
+                    return
+                self.send_json(info)
+                return
+
+            if parsed.path == "/api/phone/apps":
+                serial = query.get("serial", [""])[0]
+                refresh_flag = query.get("refresh", ["0"])[0] in ("1", "true", "yes")
+                try:
+                    res = scrcpy_bridge.list_device_apps(AdbTool(load_config()), serial=serial, force_refresh=refresh_flag)
+                except scrcpy_bridge.ScrcpyError as exc:
+                    self.send_json({"ok": False, "error": str(exc)}, 400)
+                    return
+                res["sessions"] = _phone_mirror.list_sessions()
+                self.send_json(res)
                 return
 
             if parsed.path == "/api/phone/ws":
                 if not self._check_origin():
                     self.send_json({"ok": False, "error": "forbidden origin"}, 403)
                     return
+                session_id = query.get("session", ["main"])[0]
                 upgrade = (self.headers.get("Upgrade") or "").strip().lower()
                 conn_hdr = (self.headers.get("Connection") or "").lower()
                 ws_ver = (self.headers.get("Sec-WebSocket-Version") or "").strip()
@@ -2757,7 +2786,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(handshake)
                 self.wfile.flush()
                 self.close_connection = True
-                _phone_mirror.handle_websocket(scrcpy_bridge.WebSocketConn(self.connection))
+                _phone_mirror.handle_websocket(scrcpy_bridge.WebSocketConn(self.connection), session_id=session_id)
                 return
 
             if parsed.path == "/api/exit-ip":
@@ -2819,6 +2848,52 @@ class Handler(BaseHTTPRequestHandler):
 
         if not path.startswith("/api/") or not self._check_token(query):
             self.send_json({"ok": False, "error": "unauthorized"}, 403)
+            return
+
+        if path == "/api/phone/upload":
+            cancel_pending_quit()
+            _last_request = time.time()
+            raw_len = self.headers.get("Content-Length")
+            try:
+                length = int(raw_len or 0)
+            except ValueError:
+                self.send_json({"ok": False, "error": "Invalid Content-Length"}, 400)
+                return
+            if length <= 0:
+                self.send_json({"ok": False, "error": "上传文件内容为空"}, 400)
+                return
+            if length > MAX_PHONE_UPLOAD_BYTES:
+                self.send_json({"ok": False, "error": "文件超过 512 MB 限制"}, 413)
+                return
+            filename = query.get("name", [""])[0]
+            serial = query.get("serial", [""])[0]
+            action = query.get("action", ["auto"])[0]
+            safe_name = scrcpy_bridge.sanitize_upload_filename(filename)
+            try:
+                with tempfile.TemporaryDirectory(prefix="droidbridge-up-") as td:
+                    tmp_path = Path(td) / safe_name
+                    remaining = length
+                    with tmp_path.open("wb") as fh:
+                        while remaining > 0:
+                            chunk = self.rfile.read(min(65536, remaining))
+                            if not chunk:
+                                raise EOFError("上传连接提前中断")
+                            fh.write(chunk)
+                            remaining -= len(chunk)
+                    result = scrcpy_bridge.push_or_install_file(
+                        AdbTool(load_config()),
+                        tmp_path,
+                        filename=safe_name,
+                        serial=serial,
+                        action=action,
+                    )
+            except (EOFError, OSError) as exc:
+                self.send_json({"ok": False, "error": f"接收上传文件失败：{exc}"}, 400)
+                return
+            except scrcpy_bridge.ScrcpyError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            self.send_json(result)
             return
 
         body, err = self._read_json_body()
@@ -2906,8 +2981,139 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/phone/stop":
-            st = _phone_mirror.stop()
+            session_id = str(body.get("session") or query.get("session", ["main"])[0] or "main").strip()
+            st = _phone_mirror.stop(session_id)
             self.send_json({"ok": True, "status": st})
+            return
+
+        if path == "/api/phone/launch-app":
+            serial = str(body.get("serial") or "").strip()
+            package = str(body.get("package") or "").strip()
+            try:
+                result = scrcpy_bridge.launch_device_app(AdbTool(load_config()), package=package, serial=serial)
+            except scrcpy_bridge.ScrcpyError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            self.send_json(result)
+            return
+
+        if path == "/api/phone/app/open":
+            serial = str(body.get("serial") or "").strip()
+            package = str(body.get("package") or "").strip()
+            name = str(body.get("name") or "").strip() or package
+            preset = body.get("preset")
+            custom_display = str(body.get("custom_display") or "").strip()
+            ime_policy = body.get("ime_policy")
+            max_fps = body.get("max_fps", 60)
+            popout = bool(body.get("popout", True))
+            try:
+                pol = scrcpy_bridge.normalize_ime_policy(ime_policy, default="local")
+                if custom_display:
+                    vd_spec = scrcpy_bridge.validate_new_display(custom_display)
+                    preset_key = "custom"
+                    win_w, win_h = 0, 0
+                else:
+                    preset_key = scrcpy_bridge.normalize_vd_preset(preset)
+                    preset_cfg = scrcpy_bridge.VD_PRESETS[preset_key]
+                    vd_spec = preset_cfg["new_display"]
+                    win_w, win_h = preset_cfg["win_w"], preset_cfg["win_h"]
+                session_id = scrcpy_bridge.session_id_for_package(package)
+                st = _phone_mirror.start(
+                    load_config(),
+                    serial=serial,
+                    max_fps=max_fps,
+                    session_id=session_id,
+                    new_display=vd_spec,
+                    start_app=package,
+                    app_name=name,
+                    preset=preset_key,
+                    ime_policy=pol,
+                )
+            except scrcpy_bridge.ScrcpyError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            base_url = f"http://127.0.0.1:{self.server.server_address[1]}/"
+            win_url = f"{base_url}?phone_window={session_id}"
+            focused = False
+            if popout:
+                win_title = f"{name} · DroidBridge 手机应用"
+                focused = focus_window_by_title(win_title)
+                if not focused:
+                    open_w = win_w or 510
+                    open_h = win_h or 947
+                    open_window(win_url, width=open_w, height=open_h)
+                    _schedule_resize_window(win_title, open_w, open_h)
+            self.send_json({
+                "ok": True,
+                "session_id": session_id,
+                "status": st,
+                "window_url": win_url,
+                "focused_existing": focused,
+                "win_w": win_w,
+                "win_h": win_h,
+            })
+            return
+
+        if path == "/api/phone/window/resize":
+            session_id = str(body.get("session") or "").strip()
+            try:
+                req_w = int(body.get("width") or 0)
+                req_h = int(body.get("height") or 0)
+            except (TypeError, ValueError):
+                self.send_json({"ok": False, "error": "窗口尺寸格式错误"}, 400)
+                return
+            if not session_id or req_w < 260 or req_h < 260:
+                self.send_json({"ok": False, "error": "缺少有效的窗口会话或尺寸"}, 400)
+                return
+            req_w = min(req_w, 3840)
+            req_h = min(req_h, 2400)
+            st = _phone_mirror.status(session_id)
+            label = str(st.get("app_name") or st.get("package") or body.get("name") or "").strip()
+            resized = False
+            if label:
+                win_title = f"{label} · DroidBridge 手机应用"
+                resized = resize_window_by_title(win_title, req_w, req_h, restore_maximized=True)
+            self.send_json({"ok": True, "resized": resized, "width": req_w, "height": req_h})
+            return
+
+        if path == "/api/phone/app/pin":
+            package = str(body.get("package") or "").strip()
+            name = str(body.get("name") or "").strip() or package
+            try:
+                scrcpy_bridge.session_id_for_package(package)
+                preset_key = scrcpy_bridge.normalize_vd_preset(body.get("preset"))
+                fps = scrcpy_bridge.normalize_max_fps(body.get("max_fps", 60))
+            except scrcpy_bridge.ScrcpyError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            cfg = load_config()
+            pinned = list(cfg.get("phone_apps") or [])
+            item = {
+                "id": "papp_" + re.sub(r"[^A-Za-z0-9_]", "_", package),
+                "name": name,
+                "package": package,
+                "preset": preset_key,
+                "max_fps": fps,
+            }
+            replaced = False
+            for idx, existing in enumerate(pinned):
+                if existing.get("package") == package:
+                    pinned[idx] = item
+                    replaced = True
+                    break
+            if not replaced:
+                pinned.append(item)
+            cfg["phone_apps"] = pinned
+            save_config(cfg)
+            self.send_json({"ok": True, "item": item, "state": make_state()})
+            return
+
+        if path == "/api/phone/app/unpin":
+            package = str(body.get("package") or "").strip()
+            cfg = load_config()
+            cfg["phone_apps"] = [x for x in (cfg.get("phone_apps") or []) if x.get("package") != package]
+            save_config(cfg)
+            self.send_json({"ok": True, "state": make_state()})
             return
 
         if path == "/api/settings":
@@ -3165,15 +3371,17 @@ class Handler(BaseHTTPRequestHandler):
 
 # ------------------------------------------------------------------ main ----
 
-def open_window(url):
+def open_window(url, width=1120, height=780):
     profile = Path(tempfile.gettempdir()) / "droidbridge_profile"
+    w = max(320, int(width or 1120))
+    h = max(400, int(height or 780))
     for browser in BROWSERS:
         if not Path(browser).is_file():
             continue
         args = [
             browser,
             "--app=" + url,
-            "--window-size=1120,780",
+            f"--window-size={w},{h}",
             "--user-data-dir=" + str(profile),
             "--no-first-run",
             "--no-default-browser-check",
@@ -3313,7 +3521,226 @@ def close_ui_windows(wait_timeout: float = 1.0, user32=None) -> int:
     return len(windows)
 
 
+def focus_window_by_title(target_title: str, user32=None) -> bool:
+    if os.name != "nt" or not target_title:
+        return False
+    u32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    u32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+    u32.EnumWindows.restype = wintypes.BOOL
+    u32.IsWindowVisible.argtypes = [wintypes.HWND]
+    u32.IsWindowVisible.restype = wintypes.BOOL
+    u32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    u32.GetWindowTextLengthW.restype = ctypes.c_int
+    u32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    u32.GetWindowTextW.restype = ctypes.c_int
+    u32.IsIconic.argtypes = [wintypes.HWND]
+    u32.IsIconic.restype = wintypes.BOOL
+    u32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    u32.ShowWindow.restype = wintypes.BOOL
+    u32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    u32.SetForegroundWindow.restype = wintypes.BOOL
+
+    found_hwnd = 0
+
+    def _cb(hwnd, _lp):
+        nonlocal found_hwnd
+        if not u32.IsWindowVisible(hwnd):
+            return True
+        ln = u32.GetWindowTextLengthW(hwnd)
+        if ln <= 0:
+            return True
+        buf = ctypes.create_unicode_buffer(ln + 1)
+        u32.GetWindowTextW(hwnd, buf, ln + 1)
+        if buf.value == target_title:
+            found_hwnd = int(hwnd)
+            return False
+        return True
+
+    cb = WNDENUMPROC(_cb)
+    u32.EnumWindows(cb, 0)
+    if not found_hwnd:
+        return False
+    if u32.IsIconic(found_hwnd):
+        u32.ShowWindow(found_hwnd, 9)
+    u32.SetForegroundWindow(found_hwnd)
+    return True
+
+
+class _WinRECT(ctypes.Structure):
+    _fields_ = [
+        ("left", wintypes.LONG),
+        ("top", wintypes.LONG),
+        ("right", wintypes.LONG),
+        ("bottom", wintypes.LONG),
+    ]
+
+
+class _WinMONITORINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("rcMonitor", _WinRECT),
+        ("rcWork", _WinRECT),
+        ("dwFlags", wintypes.DWORD),
+    ]
+
+
+def resize_window_by_title(
+    target_title: str,
+    width: int,
+    height: int,
+    *,
+    restore_maximized: bool = False,
+    user32=None,
+) -> bool:
+    """Resize a visible top-level window matching target_title in logical DIPs."""
+    if os.name != "nt" or not target_title:
+        return False
+    try:
+        req_w = int(width)
+        req_h = int(height)
+    except (TypeError, ValueError):
+        return False
+    if req_w < 260 or req_h < 260:
+        return False
+
+    u32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    u32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+    u32.EnumWindows.restype = wintypes.BOOL
+    u32.IsWindowVisible.argtypes = [wintypes.HWND]
+    u32.IsWindowVisible.restype = wintypes.BOOL
+    u32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    u32.GetWindowTextLengthW.restype = ctypes.c_int
+    u32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    u32.GetWindowTextW.restype = ctypes.c_int
+
+    found_hwnd = 0
+
+    def _cb(hwnd, _lp):
+        nonlocal found_hwnd
+        if not u32.IsWindowVisible(hwnd):
+            return True
+        ln = u32.GetWindowTextLengthW(hwnd)
+        if ln <= 0:
+            return True
+        buf = ctypes.create_unicode_buffer(ln + 1)
+        u32.GetWindowTextW(hwnd, buf, ln + 1)
+        if buf.value == target_title:
+            found_hwnd = int(hwnd)
+            return False
+        return True
+
+    cb = WNDENUMPROC(_cb)
+    u32.EnumWindows(cb, 0)
+    if not found_hwnd:
+        return False
+
+    u32.IsIconic.argtypes = [wintypes.HWND]
+    u32.IsIconic.restype = wintypes.BOOL
+    u32.IsZoomed.argtypes = [wintypes.HWND]
+    u32.IsZoomed.restype = wintypes.BOOL
+    u32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    u32.ShowWindow.restype = wintypes.BOOL
+    u32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(_WinRECT)]
+    u32.GetWindowRect.restype = wintypes.BOOL
+    u32.SetWindowPos.argtypes = [
+        wintypes.HWND, wintypes.HWND,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT,
+    ]
+    u32.SetWindowPos.restype = wintypes.BOOL
+
+    if u32.IsIconic(found_hwnd):
+        return False
+    if u32.IsZoomed(found_hwnd):
+        if not restore_maximized:
+            return False
+        u32.ShowWindow(found_hwnd, 9)  # SW_RESTORE
+
+    scale = 1.0
+    get_sys_dpi = getattr(u32, "GetDpiForSystem", None)
+    if get_sys_dpi is not None:
+        try:
+            get_sys_dpi.argtypes = []
+            get_sys_dpi.restype = wintypes.UINT
+            sys_dpi = int(get_sys_dpi() or 96)
+            if 72 <= sys_dpi <= 480:
+                scale = sys_dpi / 96.0
+        except Exception:
+            scale = 1.0
+
+    target_w = max(300, int(round(req_w * scale)))
+    target_h = max(320, int(round(req_h * scale)))
+
+    work_left, work_top, work_right, work_bottom = 0, 0, 1920, 1040
+    mon_from_win = getattr(u32, "MonitorFromWindow", None)
+    get_mon_info = getattr(u32, "GetMonitorInfoW", None)
+    if mon_from_win is not None and get_mon_info is not None:
+        try:
+            mon_from_win.argtypes = [wintypes.HWND, wintypes.DWORD]
+            mon_from_win.restype = wintypes.HMONITOR
+            get_mon_info.argtypes = [wintypes.HMONITOR, ctypes.POINTER(_WinMONITORINFO)]
+            get_mon_info.restype = wintypes.BOOL
+            hmon = mon_from_win(found_hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+            if hmon:
+                mi = _WinMONITORINFO()
+                mi.cbSize = ctypes.sizeof(_WinMONITORINFO)
+                if get_mon_info(hmon, ctypes.byref(mi)):
+                    work_left = int(mi.rcWork.left)
+                    work_top = int(mi.rcWork.top)
+                    work_right = int(mi.rcWork.right)
+                    work_bottom = int(mi.rcWork.bottom)
+        except Exception:
+            pass
+
+    work_w = max(400, work_right - work_left)
+    work_h = max(400, work_bottom - work_top)
+    max_w = max(320, int(work_w * 0.94))
+    max_h = max(340, int(work_h * 0.94))
+    if target_w > max_w or target_h > max_h:
+        fit = min(max_w / target_w, max_h / target_h)
+        target_w = max(300, int(round(target_w * fit)))
+        target_h = max(320, int(round(target_h * fit)))
+
+    rect = _WinRECT()
+    if u32.GetWindowRect(found_hwnd, ctypes.byref(rect)):
+        x = int(rect.left)
+        y = int(rect.top)
+    else:
+        x = work_left + max(0, (work_w - target_w) // 2)
+        y = work_top + max(0, (work_h - target_h) // 2)
+
+    if x + target_w > work_right:
+        x = max(work_left, work_right - target_w)
+    if y + target_h > work_bottom:
+        y = max(work_top, work_bottom - target_h)
+    if x < work_left:
+        x = work_left
+    if y < work_top:
+        y = work_top
+
+    SWP_NOZORDER = 0x0004
+    SWP_NOACTIVATE = 0x0010
+    return bool(u32.SetWindowPos(found_hwnd, 0, x, y, target_w, target_h, SWP_NOZORDER | SWP_NOACTIVATE))
+
+
+def _schedule_resize_window(target_title: str, width: int, height: int, timeout: float = 8.0):
+    if os.name != "nt" or not target_title:
+        return
+
+    def _worker():
+        deadline = time.monotonic() + max(0.5, float(timeout))
+        while time.monotonic() < deadline:
+            if resize_window_by_title(target_title, width, height):
+                return
+            time.sleep(0.12)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def focus_existing_window(user32=None) -> bool:
+    if focus_window_by_title(UI_WINDOW_TITLE, user32=user32):
+        return True
     if os.name != "nt":
         return False
     u32 = user32 or ctypes.WinDLL("user32", use_last_error=True)
